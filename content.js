@@ -68,16 +68,11 @@ function addPromptListButton() {
     promptListButton.id = 'prompt-list-button';
     promptListButton.textContent = 'My Prompts';
     promptListButton.classList.add(
-      'inline-flex', 'items-center', 'justify-center', 'gap-2', 'whitespace-nowrap',
-      'text-sm', 'font-medium', 'leading-[normal]', 'cursor-pointer', 'focus-visible:outline-none',
-      'focus-visible:ring-1', 'focus-visible:ring-ring', 'disabled:opacity-60', 'disabled:cursor-not-allowed',
-      'transition-colors', 'duration-100', '[&_svg]:pointer-events-none', '[&_svg]:shrink-0',
-      '[&_svg]:-mx-0.5', 'select-none', 'text-fg-primary', 'hover:bg-button-ghost-hover',
-      '[&_svg]:hover:text-fg-primary', 'disabled:hover:bg-transparent', 'border', 'border-border-l1',
-      'rounded-xl' // changed from 'rounded-full' to 'rounded-xl' for same radius as hover effect
+      'border', 'border-border-l2', 'px-3', 'py-1', 'rounded-full', 'text-sm', 'text-secondary',
+      'flex', 'flex-row', 'items-center', 'gap-1', 'ml-2', 'mt-0.5'
     );
+    promptListButton.style.opacity = '1';
     promptListButton.style.width = 'auto';
-    promptListButton.style.padding = '0 1rem';
     promptListButton.style.height = '40px';
     buttonContainer.insertBefore(promptListButton, buttonContainer.firstChild);
     promptListButton.addEventListener('click', (e) => {
