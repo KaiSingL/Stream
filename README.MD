@@ -48,7 +48,7 @@ This browser extension adds a **"My Prompts"** button to the chat interface on [
 
 ## License
 
-MIT License
+This project is licensed under the [MIT License](./LICENSE.txt).
 
 ---
 
