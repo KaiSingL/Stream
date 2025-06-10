@@ -41,9 +41,10 @@ function toggleDropdown(button) {
   const userMessages = document.querySelectorAll('.flex.flex-col.items-end .message-bubble');
   dropdown.innerHTML = '';
   userMessages.forEach((msg) => {
-    const preview = getPreview(msg.textContent);
+    // Show only first 5 words, add ... if more than 5
+    const preview = getPreview(msg.textContent, 5);
     const item = document.createElement('div');
-    item.className = 'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none focus:bg-button-ghost-hover';
+    item.className = 'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none focus:bg-button-ghost-hover hover:bg-button-ghost-hover';
     item.textContent = preview;
     item.addEventListener('click', () => {
       msg.scrollIntoView({ behavior: 'smooth' });
@@ -65,15 +66,15 @@ function addPromptListButton() {
     console.log('Adding PromptList button');
     const promptListButton = document.createElement('button');
     promptListButton.id = 'prompt-list-button';
-    promptListButton.textContent = 'PromptList';
+    promptListButton.textContent = 'My Prompts';
     promptListButton.classList.add(
       'inline-flex', 'items-center', 'justify-center', 'gap-2', 'whitespace-nowrap',
       'text-sm', 'font-medium', 'leading-[normal]', 'cursor-pointer', 'focus-visible:outline-none',
       'focus-visible:ring-1', 'focus-visible:ring-ring', 'disabled:opacity-60', 'disabled:cursor-not-allowed',
       'transition-colors', 'duration-100', '[&_svg]:pointer-events-none', '[&_svg]:shrink-0',
       '[&_svg]:-mx-0.5', 'select-none', 'text-fg-primary', 'hover:bg-button-ghost-hover',
-      '[&_svg]:hover:text-fg-primary', 'disabled:hover:bg-transparent', 'border', 'border-transparent',
-      'rounded-full'
+      '[&_svg]:hover:text-fg-primary', 'disabled:hover:bg-transparent', 'border', 'border-border-l1',
+      'rounded-xl' // changed from 'rounded-full' to 'rounded-xl' for same radius as hover effect
     );
     promptListButton.style.width = 'auto';
     promptListButton.style.padding = '0 1rem';
