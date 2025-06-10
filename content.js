@@ -2,7 +2,7 @@
 // This script adds a "PromptList" button to the chat interface on https://grok.com/chat/*
 // When clicked, it shows a dropdown with previews of user messages, allowing navigation to each message.
 
-console.log('PromptList extension loaded');
+// console.log('PromptList extension loaded');
 
 // Function to generate message preview
 function getPreview(text, wordCount = 10) {
