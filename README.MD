@@ -1,4 +1,4 @@
-# PromptList Extension for Grok
+# Stream: Browser Extension for Grok
 
 This browser extension adds a **"My Prompts"** button to the chat interface on [grok.com/chat](https://grok.com/chat). Clicking the button displays a dropdown list of your previous user messages, allowing you to quickly navigate to any message in the conversation.
 
