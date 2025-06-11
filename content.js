@@ -61,8 +61,10 @@ function toggleDropdown(button) {
 
 // Add PromptList button
 function addPromptListButton() {
-  // Hide button if on https://grok.com/
-  if (window.location.href === 'https://grok.com/' || window.location.pathname === '/') {
+  // Hide button if on https://grok.com/ or https://grok.com/workspace/*
+  const isHome = window.location.href === 'https://grok.com/' || window.location.pathname === '/';
+  const isWorkspace = window.location.pathname.startsWith('/workspace/');
+  if (isHome || isWorkspace) {
     const existingButton = document.querySelector('#prompt-list-button');
     if (existingButton) existingButton.style.display = 'none';
     return;
@@ -86,7 +88,7 @@ function addPromptListButton() {
       toggleDropdown(e.currentTarget);
     });
   } else if (document.querySelector('#prompt-list-button')) {
-    // Show button if not on homepage
+    // Show button if not on homepage or workspace
     document.querySelector('#prompt-list-button').style.display = '';
   }
 }
