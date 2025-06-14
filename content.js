@@ -132,11 +132,3 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 // Also try adding the button immediately in case the container is already present
 addPromptListButton();
-// Set up MutationObserver to watch for changes and add the button when the container appears
-const observer = new MutationObserver(() => {
-	addPromptListButton();
-});
-observer.observe(document.body, { childList: true, subtree: true });
-
-// Also try adding the button immediately in case the container is already present
-addPromptListButton();
