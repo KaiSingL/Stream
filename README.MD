@@ -46,6 +46,36 @@ This browser extension adds a **"My Prompts"** button to the chat interface on [
 - To change the number of preview words, edit the `getPreview` function in `content.js`.
 - To adjust styling, modify the class lists in the relevant DOM creation code.
 
+## Building the Extension for Safari
+
+To build and run the extension in Safari, follow these steps:
+
+1. **Enable Safari Extension Developer Mode**
+   - Open Safari.
+   - Go to `Safari` > `Settings` (or `Preferences`) > `Advanced`.
+   - At the bottom, check **"Show Develop menu in menu bar"**.
+   - In the menu bar, go to `Develop` > **"Allow Unsigned Extensions"** and enable it.
+
+2. **Build the Extension**
+   - Open Terminal and navigate to your project directory:
+     ```sh
+     cd /path/to/your/project
+     ```
+   - Run the build command (replace with your actual build command, e.g., for Vite or Webpack):
+     ```sh
+     npm install
+     npm run build:safari
+     ```
+     > If you don’t have a specific `build:safari` script, use your standard build command (e.g., `npm run build`).
+
+3. **Load the Extension in Safari**
+   - Open Safari and go to `Develop` > `Show Extension Builder`.
+   - Click the `+` button and select **"Add Extension..."**.
+   - Choose the built extension directory (usually `dist` or `build`).
+   - Click **"Run"** to load the extension for testing.
+
+**Note:** You may need to sign the extension for distribution. For development, enabling unsigned extensions is sufficient.
+
 ## License
 
 This project is licensed under the [MIT License](./LICENSE.txt).
