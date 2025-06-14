@@ -56,23 +56,20 @@ To build and run the extension in Safari, follow these steps:
    - At the bottom, check **"Show Develop menu in menu bar"**.
    - In the menu bar, go to `Develop` > **"Allow Unsigned Extensions"** and enable it.
 
-2. **Build the Extension**
+2. **Convert the Extension for Safari**
    - Open Terminal and navigate to your project directory:
      ```sh
      cd /path/to/your/project
      ```
-   - Run the build command (replace with your actual build command, e.g., for Vite or Webpack):
+   - Run the Safari Web Extension Converter:
      ```sh
-     npm install
-     npm run build:safari
+     xcrun safari-web-extension-converter /path/to/your/extension --bundle-identifier com.example.myextension --swift --macos-only
      ```
-     > If you don’t have a specific `build:safari` script, use your standard build command (e.g., `npm run build`).
+   - This will generate a new Xcode project for your extension.
 
-3. **Load the Extension in Safari**
-   - Open Safari and go to `Develop` > `Show Extension Builder`.
-   - Click the `+` button and select **"Add Extension..."**.
-   - Choose the built extension directory (usually `dist` or `build`).
-   - Click **"Run"** to load the extension for testing.
+3. **Build and Run in Xcode**
+   - Open the generated Xcode project.
+   - Select your target and click **Run** to build and load the extension in Safari.
 
 **Note:** You may need to sign the extension for distribution. For development, enabling unsigned extensions is sufficient.
 
