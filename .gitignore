@@ -17,3 +17,6 @@ $RECYCLE.BIN/
 # Spotlight files
 .Spotlight-V100
 .Trashes
+
+# macOS build
+/Stream
