@@ -1,0 +1,19 @@
+# .gitignore
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows system files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS resource forks
+._*
+
+# Spotlight files
+.Spotlight-V100
+.Trashes
