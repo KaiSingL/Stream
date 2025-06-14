@@ -6,96 +6,119 @@
 
 // Function to generate message preview
 function getPreview(text, wordCount = 10) {
-  const cleanedText = text.replace(/\s+/g, ' ').trim();
-  if (!cleanedText) return '[Empty message]';
-  const words = cleanedText.split(' ');
-  return words.length > wordCount ? words.slice(0, wordCount).join(' ') + '...' : cleanedText;
+	const cleanedText = text.replace(/\s+/g, ' ').trim();
+	if (!cleanedText) return '[Empty message]';
+	const words = cleanedText.split(' ');
+	return words.length > wordCount
+		? words.slice(0, wordCount).join(' ') + '...'
+		: cleanedText;
 }
 
 // Create dropdown element
 const dropdown = document.createElement('div');
 dropdown.id = 'prompt-list-dropdown';
-dropdown.className = 'z-50 rounded-2xl bg-surface-l4 border border-border-l1 text-primary backdrop-blur-md p-1 shadow-sm shadow-black/5 max-h-[80vh] overflow-auto min-w-36 space-y-0.5';
+dropdown.className =
+	'z-50 rounded-2xl bg-surface-l4 border border-border-l1 text-primary backdrop-blur-md p-1 shadow-sm shadow-black/5 max-h-[80vh] overflow-auto min-w-36 space-y-0.5';
 dropdown.style.position = 'absolute';
 dropdown.style.display = 'none';
 document.body.appendChild(dropdown);
 
 // Stop propagation on dropdown clicks
 dropdown.addEventListener('click', (e) => {
-  e.stopPropagation();
+	e.stopPropagation();
 });
 
 // Document click listener to close dropdown
 document.addEventListener('click', (e) => {
-  if (dropdown.style.display === 'block' && !dropdown.contains(e.target)) {
-    dropdown.style.display = 'none';
-  }
+	if (dropdown.style.display === 'block' && !dropdown.contains(e.target)) {
+		dropdown.style.display = 'none';
+	}
 });
 
 // Function to toggle the dropdown
 function toggleDropdown(button) {
-  if (dropdown.style.display === 'block') {
-    dropdown.style.display = 'none';
-    return;
-  }
-  const userMessages = document.querySelectorAll('.flex.flex-col.items-end .message-bubble');
-  dropdown.innerHTML = '';
-  userMessages.forEach((msg) => {
-    // Show only first 5 words, add ... if more than 5
-    const preview = getPreview(msg.textContent, 5);
-    const item = document.createElement('div');
-    item.className = 'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none focus:bg-button-ghost-hover hover:bg-button-ghost-hover';
-    item.textContent = preview;
-    item.addEventListener('click', () => {
-      msg.scrollIntoView({ behavior: 'smooth' });
-      dropdown.style.display = 'none';
-    });
-    dropdown.appendChild(item);
-  });
-  
-  const buttonRect = button.getBoundingClientRect();
-  dropdown.style.top = `${buttonRect.bottom + window.scrollY}px`;
-  dropdown.style.left = `${buttonRect.left + window.scrollX}px`;
-  dropdown.style.display = 'block';
+	if (dropdown.style.display === 'block') {
+		dropdown.style.display = 'none';
+		return;
+	}
+	const userMessages = document.querySelectorAll(
+		'.flex.flex-col.items-end .message-bubble'
+	);
+	dropdown.innerHTML = '';
+	userMessages.forEach((msg) => {
+		// Show only first 5 words, add ... if more than 5
+		const preview = getPreview(msg.textContent, 5);
+		const item = document.createElement('div');
+		item.className =
+			'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none focus:bg-button-ghost-hover hover:bg-button-ghost-hover';
+		item.textContent = preview;
+		item.addEventListener('click', () => {
+			msg.scrollIntoView({ behavior: 'smooth' });
+			dropdown.style.display = 'none';
+		});
+		dropdown.appendChild(item);
+	});
+
+	const buttonRect = button.getBoundingClientRect();
+	dropdown.style.top = `${buttonRect.bottom + window.scrollY}px`;
+	dropdown.style.left = `${buttonRect.left + window.scrollX}px`;
+	dropdown.style.display = 'block';
 }
 
 // Add PromptList button
 function addPromptListButton() {
-  // Hide button if on https://grok.com/ or https://grok.com/workspace/*
-  const isHome = window.location.href === 'https://grok.com/' || window.location.pathname === '/';
-  const isWorkspace = window.location.pathname.startsWith('/workspace/');
-  if (isHome || isWorkspace) {
-    const existingButton = document.querySelector('#prompt-list-button');
-    if (existingButton) existingButton.style.display = 'none';
-    return;
-  }
-  const buttonContainer = document.querySelector('.absolute.flex.flex-row.items-center.gap-0\\.5.ml-auto.end-3');
-  if (buttonContainer && !document.querySelector('#prompt-list-button')) {
-    console.log('Adding PromptList button');
-    const promptListButton = document.createElement('button');
-    promptListButton.id = 'prompt-list-button';
-    promptListButton.textContent = 'My Prompts';
-    promptListButton.classList.add(
-      'border', 'border-border-l2', 'px-3', 'py-1', 'rounded-full', 'text-sm', 'text-secondary',
-      'flex', 'flex-row', 'items-center', 'gap-1', 'ml-2', 'mt-0.5'
-    );
-    promptListButton.style.opacity = '1';
-    promptListButton.style.width = 'auto';
-    promptListButton.style.height = '40px';
-    buttonContainer.insertBefore(promptListButton, buttonContainer.firstChild);
-    promptListButton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleDropdown(e.currentTarget);
-    });
-  } else if (document.querySelector('#prompt-list-button')) {
-    // Show button if not on homepage or workspace
-    document.querySelector('#prompt-list-button').style.display = '';
-  }
+	// Hide button if on https://grok.com/ or https://grok.com/workspace/*
+	const isHome =
+		window.location.href === 'https://grok.com/' ||
+		window.location.pathname === '/';
+	const isWorkspace = window.location.pathname.startsWith('/workspace/');
+	const isTasks = window.location.pathname.startsWith('/tasks/');
+	if (isHome || isWorkspace || isTasks) {
+		const existingButton = document.querySelector('#prompt-list-button');
+		if (existingButton) existingButton.style.display = 'none';
+		return;
+	}
+	const buttonContainer = document.querySelector(
+		'.absolute.flex.flex-row.items-center.gap-0\\.5.ml-auto.end-3'
+	);
+	if (buttonContainer && !document.querySelector('#prompt-list-button')) {
+		console.log('Adding PromptList button');
+		const promptListButton = document.createElement('button');
+		promptListButton.id = 'prompt-list-button';
+		promptListButton.textContent = 'My Prompts';
+		promptListButton.classList.add(
+			'border',
+			'border-border-l2',
+			'px-3',
+			'py-1',
+			'rounded-full',
+			'text-sm',
+			'text-secondary',
+			'flex',
+			'flex-row',
+			'items-center',
+			'gap-1',
+			'ml-2',
+			'mt-0.5'
+		);
+		promptListButton.style.color = 'rgb(252, 252, 252)';
+		promptListButton.style.opacity = '1';
+		promptListButton.style.width = 'auto';
+		promptListButton.style.height = '40px';
+		buttonContainer.insertBefore(promptListButton, buttonContainer.firstChild);
+		promptListButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			toggleDropdown(e.currentTarget);
+		});
+	} else if (document.querySelector('#prompt-list-button')) {
+		// Show button if not on homepage or workspace
+		document.querySelector('#prompt-list-button').style.display = '';
+	}
 }
 
 // Set up MutationObserver to watch for changes and add the button when the container appears
 const observer = new MutationObserver(() => {
-  addPromptListButton();
+	addPromptListButton();
 });
 observer.observe(document.body, { childList: true, subtree: true });
 
