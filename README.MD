@@ -51,19 +51,21 @@ This browser extension adds a **"My Prompts"** button to the chat interface on [
 To build and run the extension in Safari, follow these steps:
 
 1. **Enable Safari Extension Developer Mode**
+
    - Open Safari.
    - Go to `Safari` > `Settings` (or `Preferences`) > `Advanced`.
    - At the bottom, check **"Show Develop menu in menu bar"**.
    - In the menu bar, go to `Develop` > **"Allow Unsigned Extensions"** and enable it.
 
 2. **Convert the Extension for Safari**
+
    - Open Terminal and navigate to your project directory:
      ```sh
      cd /path/to/your/project
      ```
    - Run the Safari Web Extension Converter:
      ```sh
-     xcrun safari-web-extension-converter /path/to/your/extension --bundle-identifier com.example.myextension --swift --macos-only
+     xcrun safari-web-extension-converter /path/to/this/extension --bundle-identifier com.example.myextension --swift --macos-only
      ```
    - This will generate a new Xcode project for your extension.
 
