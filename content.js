@@ -88,20 +88,21 @@ function addPromptListButton() {
 		promptListButton.textContent = 'My Prompts';
 		promptListButton.classList.add(
 			'border',
-			'border-border-l2',
+			'border-transparent',
 			'px-3',
 			'py-1',
 			'rounded-full',
 			'text-sm',
-			'text-secondary',
 			'flex',
 			'flex-row',
 			'items-center',
 			'gap-1',
 			'ml-2',
-			'mt-0.5'
+			'mt-0.5',
+			'focus:bg-button-ghost-hover',
+			'hover:bg-button-ghost-hover',
+			'type="button"'
 		);
-		promptListButton.style.color = 'rgb(252, 252, 252)';
 		promptListButton.style.opacity = '1';
 		promptListButton.style.width = 'auto';
 		promptListButton.style.height = '40px';
