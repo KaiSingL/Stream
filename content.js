@@ -67,21 +67,28 @@ function toggleDropdown(button) {
 
 // Add PromptList button
 function addPromptListButton() {
-	// Hide button if on https://grok.com/ or https://grok.com/workspace/*
+	// Check if the current URL is one where the button should be hidden
 	const isHome =
 		window.location.href === 'https://grok.com/' ||
 		window.location.pathname === '/';
 	const isWorkspace = window.location.pathname.startsWith('/workspace/');
 	const isTasks = window.location.pathname.startsWith('/tasks/');
-	if (isHome || isWorkspace || isTasks) {
-		const existingButton = document.querySelector('#prompt-list-button');
-		if (existingButton) existingButton.style.display = 'none';
+	const shouldHideButton = isHome || isWorkspace || isTasks;
+
+	// If button should be hidden, hide it if it exists and return
+	const existingButton = document.querySelector('#prompt-list-button');
+	if (shouldHideButton) {
+		if (existingButton) {
+			existingButton.style.display = 'none';
+		}
 		return;
 	}
+
+	// If button should be shown, ensure it's visible or create it
 	const buttonContainer = document.querySelector(
 		'.absolute.flex.flex-row.items-center.gap-0\\.5.ml-auto.end-3'
 	);
-	if (buttonContainer && !document.querySelector('#prompt-list-button')) {
+	if (buttonContainer && !existingButton) {
 		console.log('Adding PromptList button');
 		const promptListButton = document.createElement('button');
 		promptListButton.id = 'prompt-list-button';
@@ -100,9 +107,9 @@ function addPromptListButton() {
 			'ml-2',
 			'mt-0.5',
 			'focus:bg-button-ghost-hover',
-			'hover:bg-button-ghost-hover',
-			'type="button"'
+			'hover:bg-button-ghost-hover'
 		);
+		promptListButton.type = 'button';
 		promptListButton.style.opacity = '1';
 		promptListButton.style.width = 'auto';
 		promptListButton.style.height = '40px';
@@ -111,12 +118,20 @@ function addPromptListButton() {
 			e.stopPropagation();
 			toggleDropdown(e.currentTarget);
 		});
-	} else if (document.querySelector('#prompt-list-button')) {
-		// Show button if not on homepage or workspace
-		document.querySelector('#prompt-list-button').style.display = '';
+	} else if (existingButton) {
+		// Ensure the button is visible if it exists and should be shown
+		existingButton.style.display = '';
 	}
 }
 
+// Set up MutationObserver to watch for changes and add the button when the container appears
+const observer = new MutationObserver(() => {
+	addPromptListButton();
+});
+observer.observe(document.body, { childList: true, subtree: true });
+
+// Also try adding the button immediately in case the container is already present
+addPromptListButton();
 // Set up MutationObserver to watch for changes and add the button when the container appears
 const observer = new MutationObserver(() => {
 	addPromptListButton();
