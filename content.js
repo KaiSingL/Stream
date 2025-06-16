@@ -67,19 +67,15 @@ function toggleDropdown(button) {
 
 // Add PromptList button
 function addPromptListButton() {
-	// Check if the current URL is one where the button should be hidden
-	const isHome =
-		window.location.href === 'https://grok.com/' ||
-		window.location.pathname === '/';
-	const isWorkspace = window.location.pathname.startsWith('/workspace/');
-	const isTasks = window.location.pathname.startsWith('/tasks/');
-	const shouldHideButton = isHome || isWorkspace || isTasks;
-
-	// If button should be hidden, hide it if it exists and return
+	// Check if the current URL starts with /chat/
+	const isChat = window.location.pathname.startsWith('/chat/');
+	
+	// If not on /chat/, hide the button if it exists and return
 	const existingButton = document.querySelector('#prompt-list-button');
-	if (shouldHideButton) {
+	if (!isChat) {
 		if (existingButton) {
 			existingButton.style.display = 'none';
+			console.log('Hiding button for URL:', window.location.pathname); // Debug
 		}
 		return;
 	}
