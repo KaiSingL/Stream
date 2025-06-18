@@ -82,7 +82,7 @@ function addPromptListButton() {
 
 	// If button should be shown, ensure it's visible or create it
 	const buttonContainer = document.querySelector(
-		'.absolute.flex.flex-row.items-center.gap-0\\.5.ml-auto.end-3'
+		'.absolute.flex.flex-row.items-center.gap-0\\.5.ms-auto.end-3'
 	);
 	if (buttonContainer && !existingButton) {
 		console.log('Adding PromptList button');
