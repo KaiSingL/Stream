@@ -67,18 +67,18 @@ function toggleDropdown(button) {
 
 // Add PromptList button
 function addPromptListButton() {
-	// Check if the current URL starts with /chat/
-	const isChat = window.location.pathname.startsWith('/chat/');
-	
-	// If not on /chat/, hide the button if it exists and return
-	const existingButton = document.querySelector('#prompt-list-button');
-	if (!isChat) {
-		if (existingButton) {
-			existingButton.style.display = 'none';
-			console.log('Hiding button for URL:', window.location.pathname); // Debug
-		}
-		return;
-	}
+    // Check if the current URL starts with /chat/ or /project/
+    const isChat = window.location.pathname.startsWith('/chat/') || window.location.pathname.startsWith('/project/');
+    
+    // If not on /chat/ or /project/, hide the button if it exists and return
+    const existingButton = document.querySelector('#prompt-list-button');
+    if (!isChat) {
+        if (existingButton) {
+            existingButton.style.display = 'none';
+            console.log('Hiding button for URL:', window.location.pathname); // Debug
+        }
+        return;
+    }
 
 	// If button should be shown, ensure it's visible or create it
 	const buttonContainer = document.querySelector(
