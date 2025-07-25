@@ -2,7 +2,9 @@
 
 This browser extension adds a **"My Prompts"** button to the chat and project interfaces on [grok.com/chat](https://grok.com/chat) and [grok.com/project](https://grok.com/project). Clicking the button displays a dropdown list of your previous user messages, allowing you to quickly navigate to any message in the conversation or project.
 
-![Stream Extension Demo](./images/StreamDemo.png)
+<p align="center">
+  <img src="./images/StreamDemo.png" alt="Stream Extension Demo" />
+</p>
 
 ## Features
 
