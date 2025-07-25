@@ -1,5 +1,5 @@
 // PromptList Extension for grok.com
-// This script adds a "PromptList" button to the chat interface on https://grok.com/chat/*
+// This script adds a "PromptList" button to the chat and project interfaces on https://grok.com/chat/* and https://grok.com/project/*
 // When clicked, it shows a dropdown with previews of user messages, allowing navigation to each message.
 
 // console.log('PromptList extension loaded');
