@@ -1,20 +1,20 @@
 # Stream: Browser Extension for Grok
 
-This browser extension adds a **"My Prompts"** button to the chat interface on [grok.com/chat](https://grok.com/chat). Clicking the button displays a dropdown list of your previous user messages, allowing you to quickly navigate to any message in the conversation.
+This browser extension adds a **"My Prompts"** button to the chat and project interfaces on [grok.com/chat](https://grok.com/chat) and [grok.com/project](https://grok.com/project). Clicking the button displays a dropdown list of your previous user messages, allowing you to quickly navigate to any message in the conversation or project.
 
 ## Features
 
 - **My Prompts Button:**  
-  Adds a visually consistent button to the chat UI for easy access.
+  Adds a visually consistent button to the chat and project UI for easy access.
 
 - **Dropdown Navigation:**  
   Clicking the button shows a dropdown with previews (first 5 words) of your previous user messages. If a message is longer than 5 words, it is truncated with `...`.
 
 - **Quick Scroll:**  
-  Click any item in the dropdown to smoothly scroll to that message in the chat.
+  Click any item in the dropdown to smoothly scroll to that message in the chat or project.
 
 - **Automatic UI Integration:**  
-  Uses a MutationObserver to ensure the button appears even if the chat UI reloads or updates.
+  Uses a MutationObserver to ensure the button appears even if the chat or project UI reloads or updates.
 
 ## Installation
 
@@ -30,10 +30,10 @@ This browser extension adds a **"My Prompts"** button to the chat interface on [
 
 ## Usage
 
-1. Go to [https://grok.com/chat](https://grok.com/chat)
-2. You will see a **"My Prompts"** button in the chat controls.
+1. Go to [https://grok.com/chat](https://grok.com/chat) or [https://grok.com/project](https://grok.com/project)
+2. You will see a **"My Prompts"** button in the chat or project controls.
 3. Click the button to open a dropdown of your previous user messages.
-4. Click any message preview to scroll to that message in the chat.
+4. Click any message preview to scroll to that message in the chat or project.
 
 ## Development
 
