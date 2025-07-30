@@ -67,18 +67,20 @@ function toggleDropdown(button) {
 
 // Add PromptList button
 function addPromptListButton() {
-    // Check if the current URL starts with /chat/ or /project/
-    const isChat = window.location.pathname.startsWith('/chat/') || window.location.pathname.startsWith('/project/');
-    
-    // If not on /chat/ or /project/, hide the button if it exists and return
-    const existingButton = document.querySelector('#prompt-list-button');
-    if (!isChat) {
-        if (existingButton) {
-            existingButton.style.display = 'none';
-            console.log('Hiding button for URL:', window.location.pathname); // Debug
-        }
-        return;
-    }
+	// Check if the current URL starts with /chat/ or /project/
+	const isChat =
+		window.location.pathname.startsWith('/chat/') ||
+		window.location.pathname.startsWith('/project/');
+
+	// If not on /chat/ or /project/, hide the button if it exists and return
+	const existingButton = document.querySelector('#prompt-list-button');
+	if (!isChat) {
+		if (existingButton) {
+			existingButton.style.display = 'none';
+			console.log('Hiding button for URL:', window.location.pathname); // Debug
+		}
+		return;
+	}
 
 	// If button should be shown, ensure it's visible or create it
 	const buttonContainer = document.querySelector(
@@ -88,30 +90,37 @@ function addPromptListButton() {
 		console.log('Adding PromptList button');
 		const promptListButton = document.createElement('button');
 		promptListButton.id = 'prompt-list-button';
-		promptListButton.textContent = 'My Prompts';
+		promptListButton.innerHTML = `
+			<span style="opacity: 1; transform: none;">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-[2]" stroke-width="2">
+					<path d="
+						M21.5 13v4.2c0 1.68-1.26 3.255-2.94 3.57a4.83 4.83 90 01-.945.105h-10.5a3.78 3.78 90 01-3.78-3.57V6.825c0-1.68 1.365-3.255 3.045-3.57a5.46 5.46 90 01.84-.105h10.395a3.78 3.78 90 013.78 3.675zM12.984 6.008C8.411 6.818 5.443 10.887 8.967 12.959M14.952 12.062C19.648 14.156 15.988 17.817 11.168 18.122M12.003 15.379V14.783M12.005 12.453V11.716M11.959 9.322V8.793
+						" stroke="currentColor" stroke-linecap="round"/>
+				</svg>
+			</span>
+		`;
 		promptListButton.classList.add(
 			'border',
 			'border-transparent',
-			'px-3',
-			'py-1',
+			'p-0',
 			'rounded-full',
 			'text-sm',
 			'flex',
 			'flex-row',
 			'items-center',
+			'justify-center',
 			'gap-1',
 			'ml-2',
-			'mt-0.5',
 			'focus:bg-button-ghost-hover',
 			'hover:bg-button-ghost-hover'
 		);
 		promptListButton.type = 'button';
 		promptListButton.style.opacity = '1';
-		promptListButton.style.width = 'auto';
+		promptListButton.style.width = '40px';
 		promptListButton.style.height = '40px';
 
 		// Tooltip integration using Radix-like structure
-		const tooltipContent = 'View your prompt list';
+		const tooltipContent = 'View your prompts';
 		const tooltipId = 'radix-' + Math.random().toString(36).substr(2, 9);
 		const ariaSpan = document.createElement('span');
 		ariaSpan.id = tooltipId;
@@ -132,7 +141,8 @@ function addPromptListButton() {
 		tooltipDiv.setAttribute('data-side', 'bottom');
 		tooltipDiv.setAttribute('data-align', 'center');
 		tooltipDiv.setAttribute('data-state', 'closed');
-		tooltipDiv.className = 'z-50 overflow-hidden rounded-md bg-popover shadow-sm dark:shadow-none px-3 py-1.5 text-xs text-popover-foreground pointer-events-none max-w-80 text-wrap animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2';
+		tooltipDiv.className =
+			'z-50 overflow-hidden rounded-md bg-popover shadow-sm dark:shadow-none px-3 py-1.5 text-xs text-popover-foreground pointer-events-none max-w-80 text-wrap animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2';
 		tooltipDiv.innerHTML = `<p>${tooltipContent}</p>`;
 		tooltipDiv.appendChild(ariaSpan);
 
@@ -143,17 +153,35 @@ function addPromptListButton() {
 		popperWrapper.style.top = '0px';
 		popperWrapper.style.minWidth = 'max-content';
 		popperWrapper.style.zIndex = '50';
-		popperWrapper.style.setProperty('--radix-popper-transform-origin', '50% 0px');
+		popperWrapper.style.setProperty(
+			'--radix-popper-transform-origin',
+			'50% 0px'
+		);
 		popperWrapper.appendChild(tooltipDiv);
 		document.body.appendChild(popperWrapper);
 		popperWrapper.style.display = 'none';
 
 		// Set CSS variables on tooltipDiv
-		tooltipDiv.style.setProperty('--radix-tooltip-content-transform-origin', 'var(--radix-popper-transform-origin)');
-		tooltipDiv.style.setProperty('--radix-tooltip-content-available-width', 'var(--radix-popper-available-width)');
-		tooltipDiv.style.setProperty('--radix-tooltip-content-available-height', 'var(--radix-popper-available-height)');
-		tooltipDiv.style.setProperty('--radix-tooltip-trigger-width', 'var(--radix-popper-anchor-width)');
-		tooltipDiv.style.setProperty('--radix-tooltip-trigger-height', 'var(--radix-popper-anchor-height)');
+		tooltipDiv.style.setProperty(
+			'--radix-tooltip-content-transform-origin',
+			'var(--radix-popper-transform-origin)'
+		);
+		tooltipDiv.style.setProperty(
+			'--radix-tooltip-content-available-width',
+			'var(--radix-popper-available-width)'
+		);
+		tooltipDiv.style.setProperty(
+			'--radix-tooltip-content-available-height',
+			'var(--radix-popper-available-height)'
+		);
+		tooltipDiv.style.setProperty(
+			'--radix-tooltip-trigger-width',
+			'var(--radix-popper-anchor-width)'
+		);
+		tooltipDiv.style.setProperty(
+			'--radix-tooltip-trigger-height',
+			'var(--radix-popper-anchor-height)'
+		);
 
 		// Accessibility
 		promptListButton.setAttribute('aria-describedby', tooltipId);
@@ -164,13 +192,26 @@ function addPromptListButton() {
 			popperWrapper.style.visibility = 'hidden';
 			const buttonRect = promptListButton.getBoundingClientRect();
 			const tooltipRect = tooltipDiv.getBoundingClientRect();
-			const translateX = buttonRect.left + (buttonRect.width / 2) - (tooltipRect.width / 2);
+			const translateX =
+				buttonRect.left + buttonRect.width / 2 - tooltipRect.width / 2;
 			const translateY = buttonRect.bottom + 4; // Offset for arrow/space
 			popperWrapper.style.transform = `translate(${translateX}px, ${translateY}px)`;
-			popperWrapper.style.setProperty('--radix-popper-available-width', `${window.innerWidth}px`);
-			popperWrapper.style.setProperty('--radix-popper-available-height', `${window.innerHeight}px`);
-			popperWrapper.style.setProperty('--radix-popper-anchor-width', `${buttonRect.width}px`);
-			popperWrapper.style.setProperty('--radix-popper-anchor-height', `${buttonRect.height}px`);
+			popperWrapper.style.setProperty(
+				'--radix-popper-available-width',
+				`${window.innerWidth}px`
+			);
+			popperWrapper.style.setProperty(
+				'--radix-popper-available-height',
+				`${window.innerHeight}px`
+			);
+			popperWrapper.style.setProperty(
+				'--radix-popper-anchor-width',
+				`${buttonRect.width}px`
+			);
+			popperWrapper.style.setProperty(
+				'--radix-popper-anchor-height',
+				`${buttonRect.height}px`
+			);
 			popperWrapper.style.visibility = '';
 			tooltipDiv.setAttribute('data-state', 'active-open');
 		});
@@ -186,11 +227,15 @@ function addPromptListButton() {
 			}
 		});
 
-		buttonContainer.insertBefore(promptListButton, buttonContainer.firstChild);
+		// Click event with tooltip dismissal
 		promptListButton.addEventListener('click', (e) => {
 			e.stopPropagation();
+			tooltipDiv.setAttribute('data-state', 'closed');
+			popperWrapper.style.display = 'none';
 			toggleDropdown(e.currentTarget);
 		});
+
+		buttonContainer.insertBefore(promptListButton, buttonContainer.firstChild);
 	} else if (existingButton) {
 		// Ensure the button is visible if it exists and should be shown
 		existingButton.style.display = '';
