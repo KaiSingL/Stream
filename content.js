@@ -109,6 +109,83 @@ function addPromptListButton() {
 		promptListButton.style.opacity = '1';
 		promptListButton.style.width = 'auto';
 		promptListButton.style.height = '40px';
+
+		// Tooltip integration using Radix-like structure
+		const tooltipContent = 'View your prompt list';
+		const tooltipId = 'radix-' + Math.random().toString(36).substr(2, 9);
+		const ariaSpan = document.createElement('span');
+		ariaSpan.id = tooltipId;
+		ariaSpan.role = 'tooltip';
+		ariaSpan.style.position = 'absolute';
+		ariaSpan.style.border = '0px';
+		ariaSpan.style.width = '1px';
+		ariaSpan.style.height = '1px';
+		ariaSpan.style.padding = '0px';
+		ariaSpan.style.margin = '-1px';
+		ariaSpan.style.overflow = 'hidden';
+		ariaSpan.style.clip = 'rect(0px, 0px, 0px, 0px)';
+		ariaSpan.style.whiteSpace = 'nowrap';
+		ariaSpan.style.overflowWrap = 'normal';
+		ariaSpan.innerHTML = `<p>${tooltipContent}</p>`;
+
+		const tooltipDiv = document.createElement('div');
+		tooltipDiv.setAttribute('data-side', 'bottom');
+		tooltipDiv.setAttribute('data-align', 'center');
+		tooltipDiv.setAttribute('data-state', 'closed');
+		tooltipDiv.className = 'z-50 overflow-hidden rounded-md bg-popover shadow-sm dark:shadow-none px-3 py-1.5 text-xs text-popover-foreground pointer-events-none max-w-80 text-wrap animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2';
+		tooltipDiv.innerHTML = `<p>${tooltipContent}</p>`;
+		tooltipDiv.appendChild(ariaSpan);
+
+		const popperWrapper = document.createElement('div');
+		popperWrapper.setAttribute('data-radix-popper-content-wrapper', '');
+		popperWrapper.style.position = 'fixed';
+		popperWrapper.style.left = '0px';
+		popperWrapper.style.top = '0px';
+		popperWrapper.style.minWidth = 'max-content';
+		popperWrapper.style.zIndex = '50';
+		popperWrapper.style.setProperty('--radix-popper-transform-origin', '50% 0px');
+		popperWrapper.appendChild(tooltipDiv);
+		document.body.appendChild(popperWrapper);
+		popperWrapper.style.display = 'none';
+
+		// Set CSS variables on tooltipDiv
+		tooltipDiv.style.setProperty('--radix-tooltip-content-transform-origin', 'var(--radix-popper-transform-origin)');
+		tooltipDiv.style.setProperty('--radix-tooltip-content-available-width', 'var(--radix-popper-available-width)');
+		tooltipDiv.style.setProperty('--radix-tooltip-content-available-height', 'var(--radix-popper-available-height)');
+		tooltipDiv.style.setProperty('--radix-tooltip-trigger-width', 'var(--radix-popper-anchor-width)');
+		tooltipDiv.style.setProperty('--radix-tooltip-trigger-height', 'var(--radix-popper-anchor-height)');
+
+		// Accessibility
+		promptListButton.setAttribute('aria-describedby', tooltipId);
+
+		// Hover events
+		promptListButton.addEventListener('mouseenter', () => {
+			popperWrapper.style.display = 'block';
+			popperWrapper.style.visibility = 'hidden';
+			const buttonRect = promptListButton.getBoundingClientRect();
+			const tooltipRect = tooltipDiv.getBoundingClientRect();
+			const translateX = buttonRect.left + (buttonRect.width / 2) - (tooltipRect.width / 2);
+			const translateY = buttonRect.bottom + 4; // Offset for arrow/space
+			popperWrapper.style.transform = `translate(${translateX}px, ${translateY}px)`;
+			popperWrapper.style.setProperty('--radix-popper-available-width', `${window.innerWidth}px`);
+			popperWrapper.style.setProperty('--radix-popper-available-height', `${window.innerHeight}px`);
+			popperWrapper.style.setProperty('--radix-popper-anchor-width', `${buttonRect.width}px`);
+			popperWrapper.style.setProperty('--radix-popper-anchor-height', `${buttonRect.height}px`);
+			popperWrapper.style.visibility = '';
+			tooltipDiv.setAttribute('data-state', 'active-open');
+		});
+
+		promptListButton.addEventListener('mouseleave', () => {
+			tooltipDiv.setAttribute('data-state', 'closed');
+		});
+
+		// Hide after animation ends
+		tooltipDiv.addEventListener('animationend', () => {
+			if (tooltipDiv.getAttribute('data-state') === 'closed') {
+				popperWrapper.style.display = 'none';
+			}
+		});
+
 		buttonContainer.insertBefore(promptListButton, buttonContainer.firstChild);
 		promptListButton.addEventListener('click', (e) => {
 			e.stopPropagation();
