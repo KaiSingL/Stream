@@ -87,4 +87,4 @@ The extension uses an SVG icon for the "My Prompts" button, defined as follows:
 ## Development Notes
 - The extension avoids external libraries to keep it lightweight and maintainable.
 - The SVG icon's `stroke-linecap` can be customized (`butt`, `round`, or `square`) to match the desired visual style.
-- Test thoroughly on grok.com to ensure selector compatibility with future UI changes.
+- Although thorough test was performed on grok.com, future changes to the site's UI or structure may affect compatibility. No guarantee of continued functionality is provided.
