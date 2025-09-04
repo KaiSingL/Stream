@@ -70,6 +70,7 @@ function addPromptListButton() {
 	// Check if the current URL starts with /chat/ or /project/
 	const isChat =
 		window.location.pathname.startsWith('/chat/') ||
+		window.location.pathname.startsWith('/c/') ||
 		window.location.pathname.startsWith('/project/');
 
 	// If not on /chat/ or /project/, hide the button if it exists and return

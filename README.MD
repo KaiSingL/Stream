@@ -76,7 +76,7 @@ The extension uses an SVG icon for the "My Prompts" button, defined as follows:
 2. Open your browser's extension management page (e.g., `chrome://extensions/` in Chrome).
 3. Enable "Developer mode".
 4. Click "Load unpacked" and select the folder containing the extension files (`manifest.json`, `content.js`, and icon files).
-5. Navigate to `https://grok.com/chat/*` or `https://grok.com/project/*` to see the "My Prompts" button in action.
+5. Navigate to `https://grok.com/chat/*` or `https://grok.com/c/*` or `https://grok.com/project/*` to see the "My Prompts" button in action.
 
 ## Usage
 - On grok.com chat or project pages, locate the "My Prompts" button in the UI.
