@@ -251,3 +251,42 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 // Also try adding the button immediately in case the container is already present
 addPromptListButton();
+
+// Global plain-text paste interceptor
+document.addEventListener('paste', function(event) {
+    const target = event.target;
+    
+    event.preventDefault();  // Block default rich/smart paste in Edge
+    
+    const plainText = event.clipboardData.getData('text/plain');  // Raw text only (e.g., URL)
+    
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        // Simple inputs: Replace selection with plain text
+        const start = target.selectionStart;
+        const end = target.selectionEnd;
+        target.value = target.value.substring(0, start) + plainText + target.value.substring(end);
+        target.selectionStart = target.selectionEnd = start + plainText.length;
+    } else {
+        // Contenteditable: Use Range API for precise insertion
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.deleteContents();  // Clear selection
+            
+            const textNode = document.createTextNode(plainText);
+            range.insertNode(textNode);  // Insert at cursor
+            
+            range.setStartAfter(textNode);
+            range.setEndAfter(textNode);
+            selection.removeAllRanges();
+            selection.addRange(range);  // Update cursor
+        } else {
+            // Fallback: Append to end
+            target.appendChild(document.createTextNode(plainText));
+        }
+    }
+    
+    target.focus();  // Maintain focus
+}, true);  // Use capture phase for early interception
+
+console.log('Global plain-text paste active');
