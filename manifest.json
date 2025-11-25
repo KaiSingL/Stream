@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "Stream: Grok Prompt Navigator",
 	"version": "1.5",
-	"description": "Adds a PromptList button to grok.com chat to view user message previews",
+	"description": "Adds a PromptList button and code block expand toggle to grok.com chat to view user message previews",
 	"content_scripts": [
 		{
 			"matches": ["https://grok.com/*"],
