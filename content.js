@@ -66,8 +66,41 @@ function toggleDropdown(button) {
 	dropdown.style.display = 'block';
 }
 
+// Function to reset section toggle to collapse state
+function resetSectionToggleToCollapse() {
+	const existingToggleButton = document.querySelector('#section-toggle-button');
+	if (existingToggleButton) {
+		const collapseIcon = `
+			<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M3 5h8"/>
+				<path d="M3 12h8"/>
+				<path d="M3 19h8"/>
+				<path d="m15 5 3 3 3-3"/>
+				<path d="m15 19 3-3 3 3"/>
+			</svg>
+		`;
+		existingToggleButton.innerHTML = `
+			<span style="opacity: 1; transform: none;">
+				${collapseIcon}
+			</span>
+		`;
+		existingToggleButton.dataset.state = 'collapse';
+		// Update tooltip if it exists
+		const tooltipWrapper = document.getElementById('section-toggle-tooltip-wrapper');
+		if (tooltipWrapper) {
+			const tooltipDiv = tooltipWrapper.firstChild;
+			const pElement = tooltipDiv.querySelector('p');
+			if (pElement) pElement.textContent = 'Collapse code block';
+			const ariaSpan = tooltipDiv.querySelector('span[role="tooltip"]');
+			if (ariaSpan) ariaSpan.innerHTML = `<p>Collapse code block</p>`;
+		}
+		existingToggleButton.title = 'Collapse code block';
+		console.log('Section toggle reset to collapse state');
+	}
+}
+
 // Add PromptList and Section Toggle buttons
-function addPromptListButton() {
+function addButtons() {
 	// Check if the current URL starts with /chat/ or /project/
 	const isChat =
 		window.location.pathname.startsWith('/chat/') ||
@@ -329,6 +362,7 @@ function addPromptListButton() {
 			tooltipDiv.appendChild(ariaSpan);
 
 			const popperWrapper = document.createElement('div');
+			popperWrapper.id = 'section-toggle-tooltip-wrapper';
 			popperWrapper.setAttribute('data-radix-popper-content-wrapper', '');
 			popperWrapper.style.position = 'fixed';
 			popperWrapper.style.left = '0px';
@@ -479,12 +513,47 @@ function addPromptListButton() {
 
 // Set up MutationObserver to watch for changes and add the buttons when the container appears
 const observer = new MutationObserver(() => {
-	addPromptListButton();
+	addButtons();
 });
 observer.observe(document.body, { childList: true, subtree: true });
 
 // Also try adding the buttons immediately in case the container is already present
-addPromptListButton();
+addButtons();
+
+// URL change detection for SPA navigation (e.g., chat switching in projects)
+let currentUrl = window.location.href;
+function handleUrlChange() {
+	const newUrl = window.location.href;
+	if (newUrl !== currentUrl) {
+		console.log('URL changed from', currentUrl, 'to', newUrl);
+		currentUrl = newUrl;
+		// Re-check button visibility and reset section toggle state
+		addButtons();
+		resetSectionToggleToCollapse();
+	}
+}
+
+// Listen for popstate events
+window.addEventListener('popstate', handleUrlChange);
+
+// Override history methods to detect pushState/replaceState
+const originalPushState = history.pushState;
+const originalReplaceState = history.replaceState;
+
+history.pushState = function(...args) {
+	originalPushState.apply(history, args);
+	handleUrlChange();
+};
+
+history.replaceState = function(...args) {
+	originalReplaceState.apply(history, args);
+	handleUrlChange();
+};
+
+// Fallback polling for URL changes (every 1 second)
+setInterval(() => {
+	handleUrlChange();
+}, 1000);
 
 // Global plain-text paste interceptor
 document.addEventListener('paste', function (event) {
