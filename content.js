@@ -1,11 +1,75 @@
 // PromptList Extension for grok.com
 // This script adds a "PromptList" button and a "Section Toggle" button to the chat and project interfaces on https://grok.com/chat/* and https://grok.com/project/*
 // When clicked, the PromptList button shows a dropdown with previews of user messages, allowing navigation to each message.
-// The Section Toggle button collapses or expands all sections in the conversation.
+// The Section Toggle button collapses all sections in the conversation.
 
 console.log('PromptList extension loaded');
 
-// Function to generate message preview
+/**
+ * Constants for selectors, classes, and styles.
+ */
+const CONSTANTS = {
+	// URL checks
+	CHAT_PATHS: ['/chat/', '/c/', '/project/'],
+
+	// Selectors
+	BUTTON_CONTAINER_SELECTOR: '.absolute.flex.flex-row.items-center.gap-0\\.5.ms-auto.end-3',
+	USER_MESSAGES_SELECTOR: '.flex.flex-col.items-end .message-bubble',
+	COLLAPSE_BUTTON_SELECTOR: 'button[aria-label="Collapse"]',
+
+	// Button IDs
+	PROMPT_LIST_BUTTON_ID: 'prompt-list-button',
+	SECTION_TOGGLE_BUTTON_ID: 'section-toggle-button',
+
+	// Dropdown
+	DROPDOWN_ID: 'prompt-list-dropdown',
+	DROPDOWN_CLASSES: 'z-50 rounded-2xl bg-surface-l4 border border-border-l1 text-primary backdrop-blur-md p-1 shadow-sm shadow-black/5 max-h-[80vh] overflow-auto min-w-36 space-y-0.5',
+	DROPDOWN_ITEM_CLASSES: 'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none hover:bg-button-ghost-hover',
+
+	// Button common classes
+	BUTTON_COMMON_CLASSES: [
+		'border', 'border-transparent', 'p-0', 'rounded-full', 'text-sm',
+		'flex', 'flex-row', 'items-center', 'justify-center', 'gap-1',
+		'hover:bg-button-ghost-hover'
+	],
+
+	// Button styles
+	BUTTON_STYLES: { opacity: '1', width: '40px', height: '40px' },
+
+	// Tooltip common classes
+	TOOLTIP_CLASSES: 'z-50 overflow-hidden rounded-md bg-popover shadow-sm dark:shadow-none px-3 py-1.5 text-xs text-popover-foreground pointer-events-none max-w-80 text-wrap animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+
+	// Icons
+	PROMPT_LIST_ICON_SVG: `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-[2]" stroke-width="2">
+      <path d="M21.5 13v4.2c0 1.68-1.26 3.255-2.94 3.57a4.83 4.83 90 01-.945.105h-10.5a3.78 3.78 90 01-3.78-3.57V6.825c0-1.68 1.365-3.255 3.045-3.57a5.46 5.46 90 01.84-.105h10.395a3.78 3.78 90 013.78 3.675zM12.984 6.008C8.411 6.818 5.443 10.887 8.967 12.959M14.952 12.062C19.648 14.156 15.988 17.817 11.168 18.122M12.003 15.379V14.783M12.005 12.453V11.716M11.959 9.322V8.793" stroke="currentColor" stroke-linecap="round"/>
+    </svg>
+  `,
+	COLLAPSE_ICON_SVG: `
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 5h8"/>
+      <path d="M3 12h8"/>
+      <path d="M3 19h8"/>
+      <path d="m15 5 3 3 3-3"/>
+      <path d="m15 19 3-3 3 3"/>
+    </svg>
+  `,
+
+	// Tooltip contents
+	PROMPT_LIST_TOOLTIP: 'View your prompts',
+	COLLAPSE_TOOLTIP: 'Collapse code block'
+};
+
+/**
+ * Utility functions.
+ */
+
+/**
+ * Generates a preview of the text, limited to the specified word count.
+ * @param {string} text - The input text.
+ * @param {number} [wordCount=10] - Maximum number of words to include.
+ * @returns {string} The preview text.
+ */
 function getPreview(text, wordCount = 10) {
 	const cleanedText = text.replace(/\s+/g, ' ').trim();
 	if (!cleanedText) return '[Empty message]';
@@ -15,19 +79,107 @@ function getPreview(text, wordCount = 10) {
 		: cleanedText;
 }
 
-// Create dropdown element
+/**
+ * Creates a generic tooltip setup for a button.
+ * @param {HTMLElement} button - The button element.
+ * @param {string} content - Initial tooltip content.
+ * @param {string} [wrapperId] - Optional ID for the popper wrapper.
+ * @returns {Object} Object containing tooltip elements and update function.
+ */
+function createTooltip(button, content, wrapperId = null) {
+	const tooltipId = 'radix-' + Math.random().toString(36).substr(2, 9);
+	const ariaSpan = document.createElement('span');
+	ariaSpan.id = tooltipId;
+	ariaSpan.role = 'tooltip';
+	Object.assign(ariaSpan.style, {
+		position: 'absolute', border: '0px', width: '1px', height: '1px',
+		padding: '0px', margin: '-1px', overflow: 'hidden',
+		clip: 'rect(0px, 0px, 0px, 0px)', whiteSpace: 'nowrap', overflowWrap: 'normal'
+	});
+	ariaSpan.innerHTML = `<p>${content}</p>`;
+
+	const tooltipDiv = document.createElement('div');
+	tooltipDiv.setAttribute('data-side', 'bottom');
+	tooltipDiv.setAttribute('data-align', 'center');
+	tooltipDiv.setAttribute('data-state', 'closed');
+	tooltipDiv.className = CONSTANTS.TOOLTIP_CLASSES;
+	tooltipDiv.innerHTML = `<p>${content}</p>`;
+	tooltipDiv.appendChild(ariaSpan);
+
+	const popperWrapper = document.createElement('div');
+	if (wrapperId) popperWrapper.id = wrapperId;
+	popperWrapper.setAttribute('data-radix-popper-content-wrapper', '');
+	Object.assign(popperWrapper.style, {
+		position: 'fixed', left: '0px', top: '0px', minWidth: 'max-content',
+		zIndex: '50', '--radix-popper-transform-origin': '50% 0px'
+	});
+	popperWrapper.appendChild(tooltipDiv);
+	document.body.appendChild(popperWrapper);
+	popperWrapper.style.display = 'none';
+
+	// Set CSS variables on tooltipDiv
+	['--radix-tooltip-content-transform-origin', '--radix-tooltip-content-available-width',
+		'--radix-tooltip-content-available-height', '--radix-tooltip-trigger-width',
+		'--radix-tooltip-trigger-height'].forEach(varName => {
+			tooltipDiv.style.setProperty(varName, `var(${varName.replace('--radix-tooltip-', '--radix-popper-')})`);
+		});
+
+	// Accessibility
+	button.setAttribute('aria-describedby', tooltipId);
+	button.title = content;
+
+	// Hover events
+	const showTooltip = () => {
+		popperWrapper.style.display = 'block';
+		popperWrapper.style.visibility = 'hidden';
+		const buttonRect = button.getBoundingClientRect();
+		const tooltipRect = tooltipDiv.getBoundingClientRect();
+		const translateX = buttonRect.left + buttonRect.width / 2 - tooltipRect.width / 2;
+		const translateY = buttonRect.bottom + 4;
+		popperWrapper.style.transform = `translate(${translateX}px, ${translateY}px)`;
+		popperWrapper.style.setProperty('--radix-popper-available-width', `${window.innerWidth}px`);
+		popperWrapper.style.setProperty('--radix-popper-available-height', `${window.innerHeight}px`);
+		popperWrapper.style.setProperty('--radix-popper-anchor-width', `${buttonRect.width}px`);
+		popperWrapper.style.setProperty('--radix-popper-anchor-height', `${buttonRect.height}px`);
+		popperWrapper.style.visibility = '';
+		tooltipDiv.setAttribute('data-state', 'active-open');
+	};
+
+	button.addEventListener('mouseenter', showTooltip);
+	button.addEventListener('mouseleave', () => tooltipDiv.setAttribute('data-state', 'closed'));
+
+	tooltipDiv.addEventListener('animationend', () => {
+		if (tooltipDiv.getAttribute('data-state') === 'closed') {
+			popperWrapper.style.display = 'none';
+		}
+	});
+
+	/**
+	 * Updates the tooltip content.
+	 * @param {string} newContent - New tooltip content.
+	 */
+	const updateContent = (newContent) => {
+		const pElement = tooltipDiv.querySelector('p');
+		if (pElement) pElement.textContent = newContent;
+		ariaSpan.innerHTML = `<p>${newContent}</p>`;
+		button.title = newContent;
+	};
+
+	return { tooltipDiv, popperWrapper, updateContent, showTooltip };
+}
+
+/**
+ * Dropdown management.
+ */
 const dropdown = document.createElement('div');
-dropdown.id = 'prompt-list-dropdown';
-dropdown.className =
-	'z-50 rounded-2xl bg-surface-l4 border border-border-l1 text-primary backdrop-blur-md p-1 shadow-sm shadow-black/5 max-h-[80vh] overflow-auto min-w-36 space-y-0.5';
+dropdown.id = CONSTANTS.DROPDOWN_ID;
+dropdown.className = CONSTANTS.DROPDOWN_CLASSES;
 dropdown.style.position = 'absolute';
 dropdown.style.display = 'none';
 document.body.appendChild(dropdown);
 
 // Stop propagation on dropdown clicks
-dropdown.addEventListener('click', (e) => {
-	e.stopPropagation();
-});
+dropdown.addEventListener('click', (e) => e.stopPropagation());
 
 // Document click listener to close dropdown
 document.addEventListener('click', (e) => {
@@ -36,22 +188,23 @@ document.addEventListener('click', (e) => {
 	}
 });
 
-// Function to toggle the dropdown
+/**
+ * Toggles the dropdown visibility and populates with user message previews.
+ * @param {HTMLElement} button - The button that triggered the toggle.
+ */
 function toggleDropdown(button) {
 	if (dropdown.style.display === 'block') {
 		dropdown.style.display = 'none';
 		return;
 	}
-	const userMessages = document.querySelectorAll(
-		'.flex.flex-col.items-end .message-bubble'
-	);
+
+	const userMessages = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR);
 	dropdown.innerHTML = '';
+
 	userMessages.forEach((msg) => {
-		// Show only first 5 words, add ... if more than 5
 		const preview = getPreview(msg.textContent, 5);
 		const item = document.createElement('div');
-		item.className =
-			'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none hover:bg-button-ghost-hover';
+		item.className = CONSTANTS.DROPDOWN_ITEM_CLASSES;
 		item.textContent = preview;
 		item.addEventListener('click', () => {
 			msg.scrollIntoView({ behavior: 'smooth' });
@@ -66,530 +219,196 @@ function toggleDropdown(button) {
 	dropdown.style.display = 'block';
 }
 
-// Function to reset section toggle to collapse state
+/**
+ * Button creation functions.
+ */
+
+/**
+ * Creates and configures the PromptList button.
+ * @param {HTMLElement} container - The container to insert the button into.
+ * @returns {HTMLElement} The created button.
+ */
+function createPromptListButton(container) {
+	const button = document.createElement('button');
+	button.id = CONSTANTS.PROMPT_LIST_BUTTON_ID;
+	button.innerHTML = `<span style="opacity: 1; transform: none;">${CONSTANTS.PROMPT_LIST_ICON_SVG}</span>`;
+	button.classList.add(...CONSTANTS.BUTTON_COMMON_CLASSES, 'focus:bg-button-ghost-hover');
+	button.type = 'button';
+	Object.assign(button.style, CONSTANTS.BUTTON_STYLES);
+
+	const { popperWrapper, tooltipDiv } = createTooltip(button, CONSTANTS.PROMPT_LIST_TOOLTIP);
+
+	button.addEventListener('click', (e) => {
+		e.stopPropagation();
+		tooltipDiv.setAttribute('data-state', 'closed');
+		popperWrapper.style.display = 'none';
+		toggleDropdown(button);
+	});
+
+	container.insertBefore(button, container.firstChild);
+	return button;
+}
+
+/**
+ * Creates and configures the Section Collapse button.
+ * @param {HTMLElement} container - The container to insert the button into.
+ * @returns {HTMLElement} The created button.
+ */
+function createSectionToggleButton(container) {
+	const button = document.createElement('button');
+	button.id = CONSTANTS.SECTION_TOGGLE_BUTTON_ID;
+	button.innerHTML = `<span style="opacity: 1; transform: none;">${CONSTANTS.COLLAPSE_ICON_SVG}</span>`;
+	button.classList.add(...CONSTANTS.BUTTON_COMMON_CLASSES);
+	button.type = 'button';
+	Object.assign(button.style, CONSTANTS.BUTTON_STYLES);
+
+	const { tooltipDiv, popperWrapper } = createTooltip(
+		button,
+		CONSTANTS.COLLAPSE_TOOLTIP,
+		'section-toggle-tooltip-wrapper'
+	);
+
+	button.addEventListener('click', (e) => {
+		e.stopPropagation();
+		tooltipDiv.setAttribute('data-state', 'closed');
+		popperWrapper.style.display = 'none';
+
+		// Always collapse all open sections
+		document.querySelectorAll(CONSTANTS.COLLAPSE_BUTTON_SELECTOR).forEach(btn => {
+			if (btn.offsetParent !== null) btn.click();
+		});
+	});
+
+	// Insert after PromptList button or at end
+	const promptButton = document.querySelector(`#${CONSTANTS.PROMPT_LIST_BUTTON_ID}`);
+	if (promptButton && promptButton.parentNode) {
+		container.insertBefore(button, promptButton.nextSibling);
+	} else {
+		container.appendChild(button);
+	}
+
+	return button;
+}
+
+/**
+ * Resets the Section Toggle button to collapse state.
+ */
 function resetSectionToggleToCollapse() {
-	const existingToggleButton = document.querySelector('#section-toggle-button');
-	if (existingToggleButton) {
-		const collapseIcon = `
-			<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M3 5h8"/>
-				<path d="M3 12h8"/>
-				<path d="M3 19h8"/>
-				<path d="m15 5 3 3 3-3"/>
-				<path d="m15 19 3-3 3 3"/>
-			</svg>
-		`;
-		existingToggleButton.innerHTML = `
-			<span style="opacity: 1; transform: none;">
-				${collapseIcon}
-			</span>
-		`;
-		existingToggleButton.dataset.state = 'collapse';
-		// Update tooltip if it exists
+	const button = document.querySelector(`#${CONSTANTS.SECTION_TOGGLE_BUTTON_ID}`);
+	if (button) {
+		const iconSvg = CONSTANTS.COLLAPSE_ICON_SVG;
+		const tooltipText = CONSTANTS.COLLAPSE_TOOLTIP;
+		button.innerHTML = `<span style="opacity: 1; transform: none;">${iconSvg}</span>`;
+		button.title = tooltipText;
+
+		// Update tooltip content
 		const tooltipWrapper = document.getElementById('section-toggle-tooltip-wrapper');
 		if (tooltipWrapper) {
 			const tooltipDiv = tooltipWrapper.firstChild;
 			const pElement = tooltipDiv.querySelector('p');
-			if (pElement) pElement.textContent = 'Collapse code block';
+			if (pElement) pElement.textContent = tooltipText;
 			const ariaSpan = tooltipDiv.querySelector('span[role="tooltip"]');
-			if (ariaSpan) ariaSpan.innerHTML = `<p>Collapse code block</p>`;
+			if (ariaSpan) ariaSpan.innerHTML = `<p>${tooltipText}</p>`;
 		}
-		existingToggleButton.title = 'Collapse code block';
+
 		console.log('Section toggle reset to collapse state');
 	}
 }
 
-// Add PromptList and Section Toggle buttons
+/**
+ * Adds or updates buttons in the UI based on current URL.
+ */
 function addButtons() {
-	// Check if the current URL starts with /chat/ or /project/
-	const isChat =
-		window.location.pathname.startsWith('/chat/') ||
-		window.location.pathname.startsWith('/c/') ||
-		window.location.pathname.startsWith('/project/');
+	const isChatPage = CONSTANTS.CHAT_PATHS.some(path => window.location.pathname.startsWith(path));
+	const promptButton = document.querySelector(`#${CONSTANTS.PROMPT_LIST_BUTTON_ID}`);
+	const toggleButton = document.querySelector(`#${CONSTANTS.SECTION_TOGGLE_BUTTON_ID}`);
+	const container = document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR);
 
-	// If not on /chat/ or /project/, hide the buttons if they exist and return
-	const existingPromptButton = document.querySelector('#prompt-list-button');
-	const existingToggleButton = document.querySelector('#section-toggle-button');
-	if (!isChat) {
-		if (existingPromptButton) {
-			existingPromptButton.style.display = 'none';
-			console.log('Hiding PromptList button for URL:', window.location.pathname); // Debug
-		}
-		if (existingToggleButton) {
-			existingToggleButton.style.display = 'none';
-			console.log('Hiding Section Toggle button for URL:', window.location.pathname); // Debug
-		}
+	if (!isChatPage) {
+		if (promptButton) promptButton.style.display = 'none';
+		if (toggleButton) toggleButton.style.display = 'none';
+		console.log('Hiding buttons for URL:', window.location.pathname);
 		return;
 	}
 
-	// If buttons should be shown, ensure they're visible or create them
-	const buttonContainer = document.querySelector(
-		'.absolute.flex.flex-row.items-center.gap-0\\.5.ms-auto.end-3'
-	);
-	if (buttonContainer) {
-		// PromptList Button
-		if (!existingPromptButton) {
-			console.log('Adding PromptList button');
-			const promptListButton = document.createElement('button');
-			promptListButton.id = 'prompt-list-button';
-			promptListButton.innerHTML = `
-				<span style="opacity: 1; transform: none;">
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-[2]" stroke-width="2">
-						<path d="
-							M21.5 13v4.2c0 1.68-1.26 3.255-2.94 3.57a4.83 4.83 90 01-.945.105h-10.5a3.78 3.78 90 01-3.78-3.57V6.825c0-1.68 1.365-3.255 3.045-3.57a5.46 5.46 90 01.84-.105h10.395a3.78 3.78 90 013.78 3.675zM12.984 6.008C8.411 6.818 5.443 10.887 8.967 12.959M14.952 12.062C19.648 14.156 15.988 17.817 11.168 18.122M12.003 15.379V14.783M12.005 12.453V11.716M11.959 9.322V8.793
-							" stroke="currentColor" stroke-linecap="round"/>
-					</svg>
-				</span>
-			`;
-			promptListButton.classList.add(
-				'border',
-				'border-transparent',
-				'p-0',
-				'rounded-full',
-				'text-sm',
-				'flex',
-				'flex-row',
-				'items-center',
-				'justify-center',
-				'gap-1',
-				'focus:bg-button-ghost-hover',
-				'hover:bg-button-ghost-hover'
-			);
-			promptListButton.type = 'button';
-			promptListButton.style.opacity = '1';
-			promptListButton.style.width = '40px';
-			promptListButton.style.height = '40px';
+	if (promptButton) promptButton.style.display = '';
+	if (toggleButton) toggleButton.style.display = '';
 
-			// Tooltip integration using Radix-like structure
-			const tooltipContent = 'View your prompts';
-			const tooltipId = 'radix-' + Math.random().toString(36).substr(2, 9);
-			const ariaSpan = document.createElement('span');
-			ariaSpan.id = tooltipId;
-			ariaSpan.role = 'tooltip';
-			ariaSpan.style.position = 'absolute';
-			ariaSpan.style.border = '0px';
-			ariaSpan.style.width = '1px';
-			ariaSpan.style.height = '1px';
-			ariaSpan.style.padding = '0px';
-			ariaSpan.style.margin = '-1px';
-			ariaSpan.style.overflow = 'hidden';
-			ariaSpan.style.clip = 'rect(0px, 0px, 0px, 0px)';
-			ariaSpan.style.whiteSpace = 'nowrap';
-			ariaSpan.style.overflowWrap = 'normal';
-			ariaSpan.innerHTML = `<p>${tooltipContent}</p>`;
+	if (!container) return;
 
-			const tooltipDiv = document.createElement('div');
-			tooltipDiv.setAttribute('data-side', 'bottom');
-			tooltipDiv.setAttribute('data-align', 'center');
-			tooltipDiv.setAttribute('data-state', 'closed');
-			tooltipDiv.className =
-				'z-50 overflow-hidden rounded-md bg-popover shadow-sm dark:shadow-none px-3 py-1.5 text-xs text-popover-foreground pointer-events-none max-w-80 text-wrap animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2';
-			tooltipDiv.innerHTML = `<p>${tooltipContent}</p>`;
-			tooltipDiv.appendChild(ariaSpan);
-
-			const popperWrapper = document.createElement('div');
-			popperWrapper.setAttribute('data-radix-popper-content-wrapper', '');
-			popperWrapper.style.position = 'fixed';
-			popperWrapper.style.left = '0px';
-			popperWrapper.style.top = '0px';
-			popperWrapper.style.minWidth = 'max-content';
-			popperWrapper.style.zIndex = '50';
-			popperWrapper.style.setProperty(
-				'--radix-popper-transform-origin',
-				'50% 0px'
-			);
-			popperWrapper.appendChild(tooltipDiv);
-			document.body.appendChild(popperWrapper);
-			popperWrapper.style.display = 'none';
-
-			// Set CSS variables on tooltipDiv
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-content-transform-origin',
-				'var(--radix-popper-transform-origin)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-content-available-width',
-				'var(--radix-popper-available-width)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-content-available-height',
-				'var(--radix-popper-available-height)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-trigger-width',
-				'var(--radix-popper-anchor-width)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-trigger-height',
-				'var(--radix-popper-anchor-height)'
-			);
-
-			// Accessibility
-			promptListButton.setAttribute('aria-describedby', tooltipId);
-
-			// Hover events
-			promptListButton.addEventListener('mouseenter', () => {
-				popperWrapper.style.display = 'block';
-				popperWrapper.style.visibility = 'hidden';
-				const buttonRect = promptListButton.getBoundingClientRect();
-				const tooltipRect = tooltipDiv.getBoundingClientRect();
-				const translateX =
-					buttonRect.left + buttonRect.width / 2 - tooltipRect.width / 2;
-				const translateY = buttonRect.bottom + 4; // Offset for arrow/space
-				popperWrapper.style.transform = `translate(${translateX}px, ${translateY}px)`;
-				popperWrapper.style.setProperty(
-					'--radix-popper-available-width',
-					`${window.innerWidth}px`
-				);
-				popperWrapper.style.setProperty(
-					'--radix-popper-available-height',
-					`${window.innerHeight}px`
-				);
-				popperWrapper.style.setProperty(
-					'--radix-popper-anchor-width',
-					`${buttonRect.width}px`
-				);
-				popperWrapper.style.setProperty(
-					'--radix-popper-anchor-height',
-					`${buttonRect.height}px`
-				);
-				popperWrapper.style.visibility = '';
-				tooltipDiv.setAttribute('data-state', 'active-open');
-			});
-
-			promptListButton.addEventListener('mouseleave', () => {
-				tooltipDiv.setAttribute('data-state', 'closed');
-			});
-
-			// Hide after animation ends
-			tooltipDiv.addEventListener('animationend', () => {
-				if (tooltipDiv.getAttribute('data-state') === 'closed') {
-					popperWrapper.style.display = 'none';
-				}
-			});
-
-			// Click event with tooltip dismissal
-			promptListButton.addEventListener('click', (e) => {
-				e.stopPropagation();
-				tooltipDiv.setAttribute('data-state', 'closed');
-				popperWrapper.style.display = 'none';
-				toggleDropdown(e.currentTarget);
-			});
-
-			buttonContainer.insertBefore(promptListButton, buttonContainer.firstChild);
-		} else {
-			// Ensure the PromptList button is visible if it exists and should be shown
-			existingPromptButton.style.display = '';
-		}
-
-		// Section Toggle Button (added after PromptList button)
-		if (!existingToggleButton) {
-			console.log('Adding Section Toggle button');
-			const sectionToggleButton = document.createElement('button');
-			sectionToggleButton.id = 'section-toggle-button';
-
-			// Define icons (using provided SVGs; using same for now as provided, but differentiated by rotation/CSS for visual toggle if needed)
-			const collapseIcon = `
-				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M3 5h8"/>
-					<path d="M3 12h8"/>
-					<path d="M3 19h8"/>
-					<path d="m15 5 3 3 3-3"/>
-					<path d="m15 19 3-3 3 3"/>
-				</svg>
-			`;
-			const expandIcon = `
-				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M3 5h8"/>
-					<path d="M3 12h8"/>
-					<path d="M3 19h8"/>
-					<path d="m15 8 3-3 3 3"/>
-					<path d="m15 16 3 3 3-3"/>
-				</svg>
-			`;
-
-			// Initial state: collapse mode (click to collapse all open sections)
-			sectionToggleButton.dataset.state = 'collapse';
-			sectionToggleButton.innerHTML = `
-				<span style="opacity: 1; transform: none;">
-					${collapseIcon}
-				</span>
-			`;
-
-			sectionToggleButton.classList.add(
-				'border',
-				'border-transparent',
-				'p-0',
-				'rounded-full',
-				'text-sm',
-				'flex',
-				'flex-row',
-				'items-center',
-				'justify-center',
-				'gap-1',
-				'hover:bg-button-ghost-hover'
-			);
-			sectionToggleButton.type = 'button';
-			sectionToggleButton.style.opacity = '1';
-			sectionToggleButton.style.width = '40px';
-			sectionToggleButton.style.height = '40px';
-
-			// Tooltip integration using Radix-like structure (dynamic content)
-			let currentTooltipContent = 'Collapse code block';
-			const tooltipId = 'radix-' + Math.random().toString(36).substr(2, 9);
-			const ariaSpan = document.createElement('span');
-			ariaSpan.id = tooltipId;
-			ariaSpan.role = 'tooltip';
-			ariaSpan.style.position = 'absolute';
-			ariaSpan.style.border = '0px';
-			ariaSpan.style.width = '1px';
-			ariaSpan.style.height = '1px';
-			ariaSpan.style.padding = '0px';
-			ariaSpan.style.margin = '-1px';
-			ariaSpan.style.overflow = 'hidden';
-			ariaSpan.style.clip = 'rect(0px, 0px, 0px, 0px)';
-			ariaSpan.style.whiteSpace = 'nowrap';
-			ariaSpan.style.overflowWrap = 'normal';
-			ariaSpan.innerHTML = `<p>${currentTooltipContent}</p>`;
-
-			const tooltipDiv = document.createElement('div');
-			tooltipDiv.setAttribute('data-side', 'bottom');
-			tooltipDiv.setAttribute('data-align', 'center');
-			tooltipDiv.setAttribute('data-state', 'closed');
-			tooltipDiv.className =
-				'z-50 overflow-hidden rounded-md bg-popover shadow-sm dark:shadow-none px-3 py-1.5 text-xs text-popover-foreground pointer-events-none max-w-80 text-wrap animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2';
-			tooltipDiv.innerHTML = `<p>${currentTooltipContent}</p>`;
-			tooltipDiv.appendChild(ariaSpan);
-
-			const popperWrapper = document.createElement('div');
-			popperWrapper.id = 'section-toggle-tooltip-wrapper';
-			popperWrapper.setAttribute('data-radix-popper-content-wrapper', '');
-			popperWrapper.style.position = 'fixed';
-			popperWrapper.style.left = '0px';
-			popperWrapper.style.top = '0px';
-			popperWrapper.style.minWidth = 'max-content';
-			popperWrapper.style.zIndex = '50';
-			popperWrapper.style.setProperty(
-				'--radix-popper-transform-origin',
-				'50% 0px'
-			);
-			popperWrapper.appendChild(tooltipDiv);
-			document.body.appendChild(popperWrapper);
-			popperWrapper.style.display = 'none';
-
-			// Set CSS variables on tooltipDiv
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-content-transform-origin',
-				'var(--radix-popper-transform-origin)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-content-available-width',
-				'var(--radix-popper-available-width)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-content-available-height',
-				'var(--radix-popper-available-height)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-trigger-width',
-				'var(--radix-popper-anchor-width)'
-			);
-			tooltipDiv.style.setProperty(
-				'--radix-tooltip-trigger-height',
-				'var(--radix-popper-anchor-height)'
-			);
-
-			// Accessibility
-			sectionToggleButton.setAttribute('aria-describedby', tooltipId);
-
-			// Function to update tooltip content based on state
-			function updateTooltipContent() {
-				currentTooltipContent = sectionToggleButton.dataset.state === 'collapse' ? 'Collapse code block' : 'Expand code block';
-				const pElement = tooltipDiv.querySelector('p');
-				if (pElement) pElement.textContent = currentTooltipContent;
-				ariaSpan.innerHTML = `<p>${currentTooltipContent}</p>`;
-				sectionToggleButton.title = currentTooltipContent;
-			}
-
-			// Initial tooltip setup
-			updateTooltipContent();
-
-			// Hover events
-			sectionToggleButton.addEventListener('mouseenter', () => {
-				popperWrapper.style.display = 'block';
-				popperWrapper.style.visibility = 'hidden';
-				const buttonRect = sectionToggleButton.getBoundingClientRect();
-				const tooltipRect = tooltipDiv.getBoundingClientRect();
-				const translateX =
-					buttonRect.left + buttonRect.width / 2 - tooltipRect.width / 2;
-				const translateY = buttonRect.bottom + 4; // Offset for arrow/space
-				popperWrapper.style.transform = `translate(${translateX}px, ${translateY}px)`;
-				popperWrapper.style.setProperty(
-					'--radix-popper-available-width',
-					`${window.innerWidth}px`
-				);
-				popperWrapper.style.setProperty(
-					'--radix-popper-available-height',
-					`${window.innerHeight}px`
-				);
-				popperWrapper.style.setProperty(
-					'--radix-popper-anchor-width',
-					`${buttonRect.width}px`
-				);
-				popperWrapper.style.setProperty(
-					'--radix-popper-anchor-height',
-					`${buttonRect.height}px`
-				);
-				popperWrapper.style.visibility = '';
-				tooltipDiv.setAttribute('data-state', 'active-open');
-			});
-
-			sectionToggleButton.addEventListener('mouseleave', () => {
-				tooltipDiv.setAttribute('data-state', 'closed');
-			});
-
-			// Hide after animation ends
-			tooltipDiv.addEventListener('animationend', () => {
-				if (tooltipDiv.getAttribute('data-state') === 'closed') {
-					popperWrapper.style.display = 'none';
-				}
-			});
-
-			// Toggle logic: collapse all open sections or expand all closed ones
-			sectionToggleButton.addEventListener('click', (e) => {
-				e.stopPropagation();
-				tooltipDiv.setAttribute('data-state', 'closed');
-				popperWrapper.style.display = 'none';
-				if (sectionToggleButton.dataset.state === 'collapse') {
-					// Collapse all: click buttons labeled "Collapse" (those currently open)
-					document.querySelectorAll('button[aria-label="Collapse"]').forEach(btn => {
-						if (btn.offsetParent !== null) { // Ensure visible/clickable
-							btn.click();
-						}
-					});
-					// Switch to expand mode
-					sectionToggleButton.innerHTML = `
-						<span style="opacity: 1; transform: none;">
-							${expandIcon}
-						</span>
-					`;
-					sectionToggleButton.dataset.state = 'expand';
-				} else {
-					// Expand all: click buttons labeled "Expand" (those currently closed)
-					document.querySelectorAll('button[aria-label="Expand"]').forEach(btn => {
-						if (btn.offsetParent !== null) { // Ensure visible/clickable
-							btn.click();
-						}
-					});
-					// Switch to collapse mode
-					sectionToggleButton.innerHTML = `
-						<span style="opacity: 1; transform: none;">
-							${collapseIcon}
-						</span>
-					`;
-					sectionToggleButton.dataset.state = 'collapse';
-				}
-				// Update tooltip after state change
-				updateTooltipContent();
-			});
-
-			// Insert after the PromptList button (or as second child if no PromptList)
-			const insertAfterPrompt = existingPromptButton || buttonContainer.firstChild;
-			if (insertAfterPrompt && insertAfterPrompt.parentNode) {
-				buttonContainer.insertBefore(sectionToggleButton, insertAfterPrompt.nextSibling);
-			} else {
-				buttonContainer.appendChild(sectionToggleButton);
-			}
-		} else {
-			// Ensure the Section Toggle button is visible if it exists and should be shown
-			existingToggleButton.style.display = '';
-		}
-	} else {
-		// Ensure buttons are visible if container doesn't exist but buttons do (edge case)
-		if (existingPromptButton) existingPromptButton.style.display = '';
-		if (existingToggleButton) existingToggleButton.style.display = '';
-	}
+	if (!promptButton) createPromptListButton(container);
+	if (!toggleButton) createSectionToggleButton(container);
 }
 
-// Set up MutationObserver to watch for changes and add the buttons when the container appears
-const observer = new MutationObserver(() => {
-	addButtons();
-});
-observer.observe(document.body, { childList: true, subtree: true });
-
-// Also try adding the buttons immediately in case the container is already present
-addButtons();
-
-// URL change detection for SPA navigation (e.g., chat switching in projects)
+/**
+ * URL change handler for SPA navigation.
+ */
 let currentUrl = window.location.href;
 function handleUrlChange() {
 	const newUrl = window.location.href;
 	if (newUrl !== currentUrl) {
 		console.log('URL changed from', currentUrl, 'to', newUrl);
 		currentUrl = newUrl;
-		// Re-check button visibility and reset section toggle state
 		addButtons();
 		resetSectionToggleToCollapse();
 	}
 }
 
-// Listen for popstate events
+// Event listeners for URL changes
 window.addEventListener('popstate', handleUrlChange);
 
-// Override history methods to detect pushState/replaceState
 const originalPushState = history.pushState;
 const originalReplaceState = history.replaceState;
-
-history.pushState = function(...args) {
+history.pushState = function (...args) {
 	originalPushState.apply(history, args);
 	handleUrlChange();
 };
-
-history.replaceState = function(...args) {
+history.replaceState = function (...args) {
 	originalReplaceState.apply(history, args);
 	handleUrlChange();
 };
 
-// Fallback polling for URL changes (every 1 second)
-setInterval(() => {
-	handleUrlChange();
-}, 1000);
+// Fallback polling (every 1s)
+setInterval(handleUrlChange, 1000);
 
-// Global plain-text paste interceptor
+// MutationObserver for dynamic UI updates
+const observer = new MutationObserver(addButtons);
+observer.observe(document.body, { childList: true, subtree: true });
+
+// Initial setup
+addButtons();
+
+/**
+ * Global plain-text paste interceptor.
+ */
 document.addEventListener('paste', function (event) {
 	const target = event.target;
+	event.preventDefault();
 
-	event.preventDefault();  // Block default rich/smart paste in Edge
-
-	const plainText = event.clipboardData.getData('text/plain');  // Raw text only (e.g., URL)
+	const plainText = event.clipboardData.getData('text/plain');
 
 	if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-		// Simple inputs: Replace selection with plain text
 		const start = target.selectionStart;
 		const end = target.selectionEnd;
 		target.value = target.value.substring(0, start) + plainText + target.value.substring(end);
 		target.selectionStart = target.selectionEnd = start + plainText.length;
 	} else {
-		// Contenteditable: Use Range API for precise insertion
 		const selection = window.getSelection();
 		if (selection.rangeCount > 0) {
 			const range = selection.getRangeAt(0);
-			range.deleteContents();  // Clear selection
-
+			range.deleteContents();
 			const textNode = document.createTextNode(plainText);
-			range.insertNode(textNode);  // Insert at cursor
-
+			range.insertNode(textNode);
 			range.setStartAfter(textNode);
 			range.setEndAfter(textNode);
 			selection.removeAllRanges();
-			selection.addRange(range);  // Update cursor
+			selection.addRange(range);
 		} else {
-			// Fallback: Append to end
 			target.appendChild(document.createTextNode(plainText));
 		}
 	}
 
-	target.focus();  // Maintain focus
-}, true);  // Use capture phase for early interception
+	target.focus();
+}, true);
 
 console.log('Global plain-text paste active');
