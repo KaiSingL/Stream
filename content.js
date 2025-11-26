@@ -51,7 +51,7 @@ function toggleDropdown(button) {
 		const preview = getPreview(msg.textContent, 5);
 		const item = document.createElement('div');
 		item.className =
-			'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none focus:bg-button-ghost-hover hover:bg-button-ghost-hover';
+			'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none hover:bg-button-ghost-hover';
 		item.textContent = preview;
 		item.addEventListener('click', () => {
 			msg.scrollIntoView({ behavior: 'smooth' });
@@ -294,7 +294,6 @@ function addPromptListButton() {
 				'items-center',
 				'justify-center',
 				'gap-1',
-				'focus:bg-button-ghost-hover',
 				'hover:bg-button-ghost-hover'
 			);
 			sectionToggleButton.type = 'button';
