@@ -377,38 +377,3 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 // Initial setup
 addButtons();
-
-/**
- * Global plain-text paste interceptor.
- */
-document.addEventListener('paste', function (event) {
-	const target = event.target;
-	event.preventDefault();
-
-	const plainText = event.clipboardData.getData('text/plain');
-
-	if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-		const start = target.selectionStart;
-		const end = target.selectionEnd;
-		target.value = target.value.substring(0, start) + plainText + target.value.substring(end);
-		target.selectionStart = target.selectionEnd = start + plainText.length;
-	} else {
-		const selection = window.getSelection();
-		if (selection.rangeCount > 0) {
-			const range = selection.getRangeAt(0);
-			range.deleteContents();
-			const textNode = document.createTextNode(plainText);
-			range.insertNode(textNode);
-			range.setStartAfter(textNode);
-			range.setEndAfter(textNode);
-			selection.removeAllRanges();
-			selection.addRange(range);
-		} else {
-			target.appendChild(document.createTextNode(plainText));
-		}
-	}
-
-	target.focus();
-}, true);
-
-console.log('Global plain-text paste active');
