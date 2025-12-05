@@ -466,7 +466,7 @@ function attachPasteHandler() {
           p.innerText = line;
           temp.appendChild(p);
         });
-        contentToInsert = temp.innerHTML;
+        contentToInsert = temp.innerText;
       }
 
       editor.commands.insertContent(contentToInsert);
@@ -519,7 +519,8 @@ new MutationObserver(() => {
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
     // Small delay to allow new page content and tiptap init to settle
-    setTimeout(attachPasteHandler, 300);
+    document.addEventListener('DOMContentLoaded', attachPasteHandler);
+	window.addEventListener('load', attachPasteHandler);
   }
 }).observe(document, { subtree: true, childList: true });
 
