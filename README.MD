@@ -3,7 +3,6 @@
 ## Overview
 Stream is a Manifest V3 browser extension designed to enhance the user experience on grok.com's chat, conversation, and project pages (`https://grok.com/chat/*`, `https://grok.com/c/*`, and `https://grok.com/project/*`). It injects a content script that adds two buttons to the UI: a "My Prompts" button and a "Code Block Collapse" button. The "My Prompts" button displays a dropdown list of previews for the user's previous messages in the conversation, while the "Code Block Collapse" button collapses all expanded code blocks in the conversation with a single click. The extension is built using vanilla JavaScript for DOM manipulation, event handling, and dynamic UI updates, with no external library dependencies.
 
-**Version:** 1.9
 **Manifest Version:** 3
 
 <p align="center">
@@ -33,6 +32,12 @@ Stream is a Manifest V3 browser extension designed to enhance the user experienc
 - **Cross-Browser**: Compatible with modern browsers supporting Manifest V3.
 
 ## Installation
+
+### From Chrome Web Store (Recommended)
+Download the extension directly from the Chrome Web Store:
+[🔗 Stream: Grok Prompt Navigator](https://chromewebstore.google.com/detail/stream-grok-prompt-naviga/hcjnnokjhlaolaooijaeimhmbffhphnf)
+
+### Manual Installation
 1. Clone or download the repository.
 2. Open your browser's extension management page (e.g., `chrome://extensions/` in Chrome).
 3. Enable "Developer mode".
