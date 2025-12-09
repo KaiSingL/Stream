@@ -16,6 +16,7 @@ const CONSTANTS = {
 	BUTTON_CONTAINER_SELECTOR: '.absolute.flex.flex-row.items-center.gap-0\\.5.ms-auto.end-3',
 	USER_MESSAGES_SELECTOR: '.flex.flex-col.items-end .message-bubble',
 	COLLAPSE_BUTTON_SELECTOR: 'button[aria-label="Collapse"]',
+	CHAT_CONTAINER_SELECTOR: '.w-full.h-full.overflow-y-auto.overflow-x-hidden.scrollbar-gutter-stable.flex.flex-col.items-center.px-gutter',
 
 	// Button IDs
 	PROMPT_LIST_BUTTON_ID: 'prompt-list-button',
@@ -44,7 +45,7 @@ const CONSTANTS = {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-[2]" stroke-width="2">
       <path d="M21.5 13v4.2c0 1.68-1.26 3.255-2.94 3.57a4.83 4.83 90 01-.945.105h-10.5a3.78 3.78 90 01-3.78-3.57V6.825c0-1.68 1.365-3.255 3.045-3.57a5.46 5.46 90 01.84-.105h10.395a3.78 3.78 90 013.78 3.675zM12.984 6.008C8.411 6.818 5.443 10.887 8.967 12.959M14.952 12.062C19.648 14.156 15.988 17.817 11.168 18.122M12.003 15.379V14.783M12.005 12.453V11.716M11.959 9.322V8.793" stroke="currentColor" stroke-linecap="round"/>
     </svg>
-  `,
+`,
 	COLLAPSE_ICON_SVG: `
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M3 5h8"/>
@@ -53,7 +54,7 @@ const CONSTANTS = {
       <path d="m15 5 3 3 3-3"/>
       <path d="m15 19 3-3 3 3"/>
     </svg>
-  `,
+`,
 
 	// Tooltip contents
 	PROMPT_LIST_TOOLTIP: 'View your prompts',
@@ -77,6 +78,29 @@ function getPreview(text, wordCount = 10) {
 	return words.length > wordCount
 		? words.slice(0, wordCount).join(' ') + '...'
 		: cleanedText;
+}
+
+/**
+ * Scrolls to an element within its scrollable container with an offset.
+ * Falls back to scrollIntoView if the container selector fails (e.g., due to class changes).
+ * @param {HTMLElement} element - The element to scroll to.
+ * @param {number} offset - The offset in pixels from the top.
+ */
+function scrollToElementWithOffset(element, offset = 50) {
+	const container = document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR);
+	if (container) {
+		// Scroll within the container with offset
+		const rect = element.getBoundingClientRect();
+		const containerRect = container.getBoundingClientRect();
+		const targetY = rect.top - containerRect.top - offset;
+		container.scrollTo({
+			top: targetY,
+			behavior: 'smooth'
+		});
+	} else {
+		// Fallback to scrollIntoView (handles nearest scrollable ancestor or window)
+		element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
 }
 
 /**
@@ -207,7 +231,9 @@ function toggleDropdown(button) {
 		item.className = CONSTANTS.DROPDOWN_ITEM_CLASSES;
 		item.textContent = preview;
 		item.addEventListener('click', () => {
-			msg.scrollIntoView({ behavior: 'smooth' });
+			// Scroll to message with offset to avoid toolbar overlap
+			const offset = Math.round(window.innerHeight * 0.05);
+			scrollToElementWithOffset(msg, offset);
 			dropdown.style.display = 'none';
 		});
 		dropdown.appendChild(item);
@@ -375,6 +401,5 @@ setInterval(handleUrlChange, 1000);
 const observer = new MutationObserver(addButtons);
 observer.observe(document.body, { childList: true, subtree: true });
 
-// Initial setup
+// Initial run
 addButtons();
-
