@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "Stream: Grok Prompt Navigator",
-	"version": "1.9",
+	"version": "1.9.1",
 	"description": "Adds a PromptList button and code block collapse to grok.com chat to view user message previews",
 	"content_scripts": [
 		{
