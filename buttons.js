@@ -92,7 +92,7 @@ function scrollToElementWithOffset(element, offset = 50) {
 		// Scroll within the container with offset
 		const rect = element.getBoundingClientRect();
 		const containerRect = container.getBoundingClientRect();
-		const targetY = rect.top - containerRect.top - offset;
+		const targetY = rect.top - containerRect.top + container.scrollTop - offset;
 		container.scrollTo({
 			top: targetY,
 			behavior: 'smooth'
