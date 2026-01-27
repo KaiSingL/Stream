@@ -31,6 +31,7 @@ Stream is a Manifest V3 browser extension designed to enhance the user experienc
 - **Vanilla JavaScript**: Built with pure JavaScript for maximum compatibility and minimal dependencies.
 - **SPA Support**: Handles Single Page Application navigation seamlessly.
 - **Cross-Browser**: Compatible with modern browsers supporting Manifest V3.
+- **iOS Support**: Works well with Orion browser on iOS.
 
 ## Installation
 
