@@ -24,7 +24,7 @@ const CONSTANTS = {
 
 	// Dropdown
 	DROPDOWN_ID: 'prompt-list-dropdown',
-	DROPDOWN_CLASSES: 'z-50 rounded-2xl bg-surface-l4 border border-border-l1 text-primary backdrop-blur-md p-1 shadow-sm shadow-black/5 max-h-[80vh] overflow-auto min-w-36 space-y-0.5',
+	DROPDOWN_CLASSES: 'z-50 rounded-2xl bg-surface-l4 border border-border-l1 text-primary backdrop-blur-md p-1 shadow-sm shadow-black/5 max-h-[80vh] overflow-auto max-w-[calc(100vw-32px)] space-y-0.5',
 	DROPDOWN_ITEM_CLASSES: 'relative flex select-none items-center cursor-pointer px-3 py-2 rounded-xl text-sm outline-none hover:bg-button-ghost-hover',
 
 	// Button common classes
@@ -120,12 +120,24 @@ function findCorrespondingResponse(userMessage) {
 	const userWrapper = userMessage.closest('.flex.flex-col.items-end');
 	if (!userWrapper) return null;
 
+	const outerWrapper = userWrapper.parentElement;
+	if (!outerWrapper) return null;
+
 	let nextElement = userWrapper.nextElementSibling;
-	while (nextElement) {
+	while (nextElement && nextElement.parentElement === outerWrapper) {
 		if (nextElement.classList.contains('items-start')) {
 			return nextElement;
 		}
 		nextElement = nextElement.nextElementSibling;
+	}
+
+	let nextOuterWrapper = outerWrapper.nextElementSibling;
+	while (nextOuterWrapper) {
+		const responseWrapper = nextOuterWrapper.querySelector(':scope > .items-start');
+		if (responseWrapper) {
+			return responseWrapper;
+		}
+		nextOuterWrapper = nextOuterWrapper.nextElementSibling;
 	}
 	return null;
 }
@@ -314,7 +326,14 @@ function toggleDropdown(button) {
 	const buttonRect = button.getBoundingClientRect();
 	dropdown.style.top = `${buttonRect.bottom + window.scrollY}px`;
 	dropdown.style.left = `${buttonRect.left + window.scrollX}px`;
-	dropdown.style.display = 'block';
+dropdown.style.display = 'block';
+	
+	const dropdownRect = dropdown.getBoundingClientRect();
+	const spaceRight = window.innerWidth - buttonRect.left;
+	
+	if (dropdownRect.width > spaceRight - 16) {
+		dropdown.style.left = `${buttonRect.right + window.scrollX - dropdownRect.width}px`;
+	}
 }
 
 /**
