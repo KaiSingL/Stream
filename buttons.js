@@ -56,9 +56,18 @@ const CONSTANTS = {
     </svg>
 `,
 
-	// Tooltip contents
+// Tooltip contents
 	PROMPT_LIST_TOOLTIP: 'View your prompts',
-	COLLAPSE_TOOLTIP: 'Collapse code block'
+	COLLAPSE_TOOLTIP: 'Collapse code block',
+	ANSWER_TOOLTIP: 'Jump to answer',
+
+	// Answer icon SVG
+	ANSWER_ICON_SVG: `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="square">
+      <path d="M6 18l6-12 6 12"/>
+      <path d="M8 14h8"/>
+    </svg>
+  `
 };
 
 /**
@@ -102,6 +111,26 @@ function scrollToElementWithOffset(element, offset = 50) {
 		element.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	}
 }
+
+/**
+ * Finds the corresponding response element for a given user message.
+ * @param {HTMLElement} userMessage - The user message element.
+ * @returns {HTMLElement|null} The response element or null if not found.
+ */
+function findCorrespondingResponse(userMessage) {
+	const userWrapper = userMessage.closest('.flex.flex-col.items-end');
+	if (!userWrapper) return null;
+
+	let nextElement = userWrapper.nextElementSibling;
+	while (nextElement) {
+		if (nextElement.classList.contains('items-start')) {
+			return nextElement;
+		}
+		nextElement = nextElement.nextElementSibling;
+	}
+	return null;
+}
+
 
 /**
  * Creates a generic tooltip setup for a button.
@@ -227,15 +256,59 @@ function toggleDropdown(button) {
 
 	userMessages.forEach((msg) => {
 		const preview = getPreview(msg.textContent, 5);
+		const response = findCorrespondingResponse(msg);
+
 		const item = document.createElement('div');
 		item.className = CONSTANTS.DROPDOWN_ITEM_CLASSES;
-		item.textContent = preview;
+		item.style.display = 'flex';
+		item.style.justifyContent = 'space-between';
+		item.style.alignItems = 'center';
+
+		const previewSpan = document.createElement('span');
+		previewSpan.textContent = preview;
+		previewSpan.style.flex = '1';
+
+		if (response) {
+			const answerButton = document.createElement('button');
+			answerButton.innerHTML = CONSTANTS.ANSWER_ICON_SVG;
+			answerButton.style.background = 'none';
+			answerButton.style.border = 'none';
+			answerButton.style.cursor = 'pointer';
+			answerButton.style.padding = '0';
+			answerButton.style.marginLeft = '8px';
+			answerButton.style.display = 'flex';
+			answerButton.style.alignItems = 'center';
+			answerButton.style.opacity = '0.6';
+			answerButton.setAttribute('aria-label', CONSTANTS.ANSWER_TOOLTIP);
+			answerButton.setAttribute('title', CONSTANTS.ANSWER_TOOLTIP);
+			answerButton.type = 'button';
+
+			answerButton.addEventListener('mouseenter', () => {
+				answerButton.style.opacity = '1';
+			});
+			answerButton.addEventListener('mouseleave', () => {
+				answerButton.style.opacity = '0.6';
+			});
+
+			answerButton.addEventListener('click', (e) => {
+				e.stopPropagation();
+				const offset = Math.round(window.innerHeight * 0.05);
+				scrollToElementWithOffset(response, offset);
+				dropdown.style.display = 'none';
+			});
+
+			item.appendChild(previewSpan);
+			item.appendChild(answerButton);
+		} else {
+			item.appendChild(previewSpan);
+		}
+
 		item.addEventListener('click', () => {
-			// Scroll to message with offset to avoid toolbar overlap
 			const offset = Math.round(window.innerHeight * 0.05);
 			scrollToElementWithOffset(msg, offset);
 			dropdown.style.display = 'none';
 		});
+
 		dropdown.appendChild(item);
 	});
 
