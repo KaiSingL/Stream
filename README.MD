@@ -17,6 +17,7 @@ Stream is a Manifest V3 browser extension designed to enhance the user experienc
 ### 🎯 My Prompts Navigation
 - **My Prompts Button**: Adds a button to the grok.com chat, conversation, and project pages for quick access to user message previews.
 - **Smart Dropdown**: Displays a scrollable dropdown with previews of user messages, limited to 5 words per preview for brevity.
+- **Answer Button**: Includes an "Answer" button for each preview to jump directly to the AI's response.
 - **Smooth Navigation**: Clicking a preview scrolls smoothly to the corresponding message in the conversation.
 - **Intuitive UI**: Click outside the dropdown to close it automatically.
 
