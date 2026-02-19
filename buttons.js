@@ -74,18 +74,15 @@ const CONSTANTS = {
  */
 
 /**
- * Generates a preview of the text, limited to the specified word count.
+ * Generates a preview of the text, limited to the specified character count.
  * @param {string} text - The input text.
- * @param {number} [wordCount=10] - Maximum number of words to include.
+ * @param {number} [charCount=100] - Maximum number of characters to include.
  * @returns {string} The preview text.
  */
-function getPreview(text, wordCount = 10) {
+function getPreview(text, charCount = 100) {
 	const cleanedText = text.replace(/\s+/g, ' ').trim();
 	if (!cleanedText) return '[Empty message]';
-	const words = cleanedText.split(' ');
-	return words.length > wordCount
-		? words.slice(0, wordCount).join(' ') + '...'
-		: cleanedText;
+	return cleanedText.slice(0, charCount);
 }
 
 /**
@@ -266,7 +263,7 @@ function toggleDropdown(button) {
 	dropdown.innerHTML = '';
 
 	userMessages.forEach((msg) => {
-		const preview = getPreview(msg.textContent, 5);
+		const preview = getPreview(msg.textContent);
 		const response = findCorrespondingResponse(msg);
 
 		const item = document.createElement('div');
@@ -277,7 +274,11 @@ function toggleDropdown(button) {
 
 		const previewSpan = document.createElement('span');
 		previewSpan.textContent = preview;
-		previewSpan.style.flex = '1';
+		previewSpan.style.width = '190px';
+		previewSpan.style.whiteSpace = 'nowrap';
+		previewSpan.style.overflow = 'hidden';
+		previewSpan.style.WebkitMaskImage = 'linear-gradient(to right, black 170px, transparent 190px)';
+		previewSpan.style.maskImage = 'linear-gradient(to right, black 170px, transparent 190px)';
 
 		if (response) {
 			const answerButton = document.createElement('button');
