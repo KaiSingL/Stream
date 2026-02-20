@@ -330,10 +330,16 @@ function toggleDropdown(button) {
 dropdown.style.display = 'block';
 	
 	const dropdownRect = dropdown.getBoundingClientRect();
-	const spaceRight = window.innerWidth - buttonRect.left;
 	
-	if (dropdownRect.width > spaceRight - 16) {
-		dropdown.style.left = `${buttonRect.right + window.scrollX - dropdownRect.width}px`;
+	const isMobile = window.innerWidth < 640 || 'ontouchstart' in window;
+
+	if (isMobile) {
+		dropdown.style.left = `${(window.innerWidth - dropdownRect.width) / 2}px`;
+	} else {
+		const spaceRight = window.innerWidth - buttonRect.left;
+		if (dropdownRect.width > spaceRight - 16) {
+			dropdown.style.left = `${buttonRect.right + window.scrollX - dropdownRect.width}px`;
+		}
 	}
 }
 
