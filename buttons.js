@@ -13,7 +13,7 @@ const CONSTANTS = {
 	CHAT_PATHS: ['/chat/', '/c/', '/project/'],
 
 	// Selectors
-	BUTTON_CONTAINER_SELECTOR: '.absolute.flex.flex-row.items-center.gap-0\\.5.ms-auto.end-3',
+	BUTTON_CONTAINER_SELECTOR: '.absolute.flex.flex-row.items-center.ms-auto.end-3',
 	USER_MESSAGES_SELECTOR: '.flex.flex-col.items-end .message-bubble',
 	COLLAPSE_BUTTON_SELECTOR: 'button[aria-label="Collapse"]',
 	CHAT_CONTAINER_SELECTOR: '.w-full.h-full.overflow-y-auto.overflow-x-hidden.scrollbar-gutter-stable.flex.flex-col.items-center.px-gutter',
