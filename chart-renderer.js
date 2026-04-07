@@ -3,7 +3,8 @@
 // Targets code blocks with header <span>chartjs</span>
 // Auto-renders when valid JSON detected, re-renders on streaming content changes
 // Adds "Show Code" button after render to toggle code visibility
-// MutationObserver on body (childList + attributes, subtree) with rAF debounce + 5s idle disconnect
+// MutationObserver (childList + attributes + characterData) with rAF debounce + 5s idle disconnect
+// Polling fallback (1s interval) catches missed updates after observer disconnects
 // Idempotent via WeakMap tracking + .boost-chartjs-tracked class
 // Vanilla ES6+, CSP-safe, no external dependencies
 
@@ -223,7 +224,7 @@
 		if (observer) return;
 
 		observer = new MutationObserver((mutations) => {
-			const shouldProcess = mutations.some(m => m.type === 'childList' || m.type === 'attributes');
+			const shouldProcess = mutations.some(m => m.type === 'childList' || m.type === 'attributes' || m.type === 'characterData');
 			if (!shouldProcess) return;
 
 			// Debounce with rAF
@@ -245,7 +246,9 @@
 			childList: true,
 			subtree: true,
 			attributes: true,
-			attributeFilter: ['class', 'data-updated']
+			attributeFilter: ['class', 'data-updated'],
+			characterData: true,
+			characterDataOldValue: true
 		});
 
 		// Initial scan for existing elements
@@ -285,4 +288,7 @@
 
 	// Start the enhancer
 	initObserver();
+
+	// Polling fallback (catches missed updates after observer disconnects)
+	setInterval(processBlocks, 1000);
 })();
