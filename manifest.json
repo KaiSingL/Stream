@@ -6,7 +6,7 @@
 	"content_scripts": [
 		{
 			"matches": ["https://grok.com/*"],
-			"js": ["buttons.js"],
+			"js": ["lib/chart.umd.min.js", "buttons.js", "chart-renderer.js"],
 			"run_at": "document_end",
 			"world": "MAIN",
 			"all_frames": true
