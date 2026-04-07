@@ -1,9 +1,10 @@
 // ChartJS Render Enhancer for Stream Extension
 // Bundled Chart.js (loaded via manifest content_scripts, bypasses CSP)
 // Targets code blocks with header <span>chartjs</span>
-// On click: parses JSON, renders chart via bundled Chart.js, replaces code section with <canvas>
+// Auto-renders when valid JSON detected, re-renders on streaming content changes
+// Adds "Show Code" button after render to toggle code visibility
 // MutationObserver on body (childList + attributes, subtree) with rAF debounce + 5s idle disconnect
-// Idempotent via .boost-chartjs-enhanced class + button check
+// Idempotent via WeakMap tracking + .boost-chartjs-tracked class
 // Vanilla ES6+, CSP-safe, no external dependencies
 
 (function () {
@@ -18,6 +19,12 @@
 	let currentUrl = window.location.href;
 
 	/**
+	 * WeakMap to track block state for streaming updates and re-rendering.
+	 * @type {WeakMap<HTMLElement, {lastJson: string, chartInstance: Chart|null, canvas: HTMLCanvasElement|null, codeEl: HTMLElement|null, preEl: HTMLElement|null, showCodeBtn: HTMLElement|null}>}
+	 */
+	const trackedBlocks = new WeakMap();
+
+	/**
 	 * Checks if a code block is a Chart.js block by looking for the "chartjs" label.
 	 * @param {HTMLElement} block - The code block container element.
 	 * @returns {boolean} True if the block is a Chart.js block.
@@ -28,39 +35,56 @@
 	}
 
 	/**
-	 * Renders a Chart.js chart inside the given code block.
-	 * Parses JSON from the code element, replaces the code section with a canvas,
-	 * and creates a new Chart instance using the bundled Chart.js library.
+	 * Renders or re-renders a Chart.js chart inside the given code block.
+	 * Handles streaming: keeps code element hidden but in DOM for content monitoring.
+	 * Injects "Show Code" button after first successful render.
 	 * @param {HTMLElement} block - The code block container element.
+	 * @param {Object} tracked - The tracked state object from WeakMap.
+	 * @param {string} jsonText - The current JSON text content.
+	 * @param {Object} config - The parsed Chart.js config object.
 	 */
-	function renderChartInBlock(block) {
+	function renderOrUpdateChart(block, tracked, jsonText, config) {
 		const contentDiv = block.querySelector('div[style*="border-radius: 0px 0px 12px 12px"]');
-		if (!contentDiv) {
-			console.error('[Stream ChartJS] Content div not found in block');
-			return;
+		if (!contentDiv) return;
+
+		// Get or create canvas
+		let canvas = tracked.canvas;
+		let isFirstRender = false;
+
+		if (!canvas) {
+			isFirstRender = true;
+			canvas = document.createElement('canvas');
+			canvas.style.cssText = 'width:100%; height:400px; display:block;';
+			tracked.canvas = canvas;
 		}
 
-		const codeEl = contentDiv.querySelector('code');
-		if (!codeEl) {
-			console.error('[Stream ChartJS] Code element not found in content div');
-			return;
+		// Destroy existing chart instance if re-rendering
+		if (tracked.chartInstance) {
+			tracked.chartInstance.destroy();
+			tracked.chartInstance = null;
 		}
 
-		let config;
-		try {
-			config = JSON.parse(codeEl.textContent.trim());
-		} catch (err) {
-			console.error('[Stream ChartJS] Invalid JSON config:', err);
-			return;
+		// First render: hide code elements, insert canvas
+		if (isFirstRender) {
+			const codeEl = contentDiv.querySelector('code');
+			const preEl = codeEl?.closest('pre');
+
+			if (codeEl) {
+				codeEl.style.display = 'none';
+				tracked.codeEl = codeEl;
+			}
+			if (preEl) {
+				preEl.style.display = 'none';
+				tracked.preEl = preEl;
+			}
+
+			contentDiv.appendChild(canvas);
+
+			// Inject "Show Code" button
+			injectShowCodeButton(block, tracked);
 		}
 
-		// Replace code section with rendered chart canvas
-		contentDiv.innerHTML = '';
-		const canvas = document.createElement('canvas');
-		canvas.style.cssText = 'width:100%; height:400px; display:block;';
-		contentDiv.appendChild(canvas);
-
-		// Chart.js is bundled and loaded via manifest — use it directly
+		// Create new chart
 		if (typeof window.Chart === 'undefined') {
 			console.error('[Stream ChartJS] Chart.js not available — check manifest content_scripts order');
 			return;
@@ -70,49 +94,123 @@
 		if (!config.options) config.options = {};
 		config.options.responsive = true;
 		config.options.maintainAspectRatio = false;
-		new window.Chart(ctx, config);
+
+		tracked.chartInstance = new window.Chart(ctx, config);
+		tracked.lastJson = jsonText;
+
 		console.log('[Stream ChartJS] Chart rendered successfully');
 	}
 
 	/**
-	 * Scans the DOM for unenhanced Chart.js code blocks and adds render buttons.
-	 * Idempotent — skips blocks already marked with .boost-chartjs-enhanced.
+	 * Injects "Show Code" button next to the Collapse button.
+	 * Toggles code visibility on click.
+	 * @param {HTMLElement} block - The code block container element.
+	 * @param {Object} tracked - The tracked state object from WeakMap.
 	 */
-	function processAdds() {
-		document.querySelectorAll('div.border.rounded-xl:not(.boost-chartjs-enhanced)').forEach((block) => {
+	function injectShowCodeButton(block, tracked) {
+		const collapseBtn = block.querySelector('button[aria-label="Collapse"]');
+		if (!collapseBtn) return;
+
+		const collapseGroup = collapseBtn.parentElement;
+		if (!collapseGroup) return;
+
+		// Avoid duplicate buttons
+		if (collapseGroup.querySelector('.boost-show-code-btn')) return;
+
+		const showCodeBtn = document.createElement('button');
+		showCodeBtn.type = 'button';
+		showCodeBtn.className = 'inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-100 [&_svg]:shrink-0 select-none text-fg-secondary hover:text-fg-primary disabled:hover:text-fg-secondary hover:bg-surface-l2 disabled:hover:bg-surface-l1 h-8 rounded-xl px-3 text-xs bg-transparent boost-show-code-btn';
+		showCodeBtn.innerHTML = `
+			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4">
+				<polyline points="16 18 22 12 16 6"></polyline>
+				<polyline points="8 6 2 12 8 18"></polyline>
+			</svg>
+			<span class="hidden @sm/code-block:block">Show Code</span>
+		`;
+
+		showCodeBtn.addEventListener('click', (e) => {
+			e.stopImmediatePropagation();
+			toggleCodeVisibility(tracked, showCodeBtn);
+		});
+
+		collapseGroup.appendChild(showCodeBtn);
+		tracked.showCodeBtn = showCodeBtn;
+	}
+
+	/**
+	 * Toggles code visibility and updates button text.
+	 * @param {Object} tracked - The tracked state object from WeakMap.
+	 * @param {HTMLElement} btn - The Show Code button element.
+	 */
+	function toggleCodeVisibility(tracked, btn) {
+		const { codeEl, preEl, canvas } = tracked;
+		if (!codeEl) return;
+
+		const isHidden = codeEl.style.display === 'none';
+		const spanEl = btn.querySelector('span');
+
+		if (isHidden) {
+			// Show code → hide chart
+			if (preEl) preEl.style.display = '';
+			codeEl.style.display = '';
+			if (canvas) canvas.style.display = 'none';
+			if (spanEl) spanEl.textContent = 'Hide Code';
+		} else {
+			// Hide code → show chart
+			if (preEl) preEl.style.display = 'none';
+			codeEl.style.display = 'none';
+			if (canvas) canvas.style.display = '';
+			if (spanEl) spanEl.textContent = 'Show Code';
+		}
+	}
+
+	/**
+	 * Processes all chartjs blocks: finds new ones, starts tracking,
+	 * and re-renders if streaming content has changed with valid JSON.
+	 */
+	function processBlocks() {
+		// Find and track new chartjs blocks
+		document.querySelectorAll('div.border.rounded-xl:not(.boost-chartjs-tracked)').forEach((block) => {
 			if (!isChartJSBlock(block)) return;
 
-			block.classList.add('boost-chartjs-enhanced');
-
-			// Anchor on the existing Collapse button (most reliable selector)
-			const collapseBtn = block.querySelector('button[aria-label="Collapse"]');
-			if (!collapseBtn) return;
-
-			const collapseGroup = collapseBtn.parentElement;
-			if (!collapseGroup) return;
-
-			// Avoid duplicate render buttons
-			if (collapseGroup.querySelector('.boost-render-btn')) return;
-
-			const renderBtn = document.createElement('button');
-			renderBtn.type = 'button';
-			renderBtn.className = 'inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-100 [&_svg]:shrink-0 select-none text-fg-secondary hover:text-fg-primary disabled:hover:text-fg-secondary hover:bg-surface-l2 disabled:hover:bg-surface-l1 h-8 rounded-xl px-3 text-xs bg-transparent boost-render-btn';
-			renderBtn.innerHTML = `
-				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bar-chart-3 size-4">
-					<path d="M3 3v18h18"></path>
-					<path d="M18 17V9"></path>
-					<path d="M13 17V5"></path>
-					<path d="M8 17v-3"></path>
-				</svg>
-				<span class="hidden @sm/code-block:block">Render</span>
-			`;
-
-			renderBtn.addEventListener('click', (e) => {
-				e.stopImmediatePropagation();
-				renderChartInBlock(block);
+			block.classList.add('boost-chartjs-tracked');
+			trackedBlocks.set(block, {
+				lastJson: '',
+				chartInstance: null,
+				canvas: null,
+				codeEl: null,
+				preEl: null,
+				showCodeBtn: null
 			});
+		});
 
-			collapseGroup.appendChild(renderBtn);
+		// Process all tracked blocks for streaming updates
+		document.querySelectorAll('div.border.rounded-xl.boost-chartjs-tracked').forEach((block) => {
+			const tracked = trackedBlocks.get(block);
+			if (!tracked) return;
+
+			const contentDiv = block.querySelector('div[style*="border-radius: 0px 0px 12px 12px"]');
+			if (!contentDiv) return;
+
+			const codeEl = contentDiv.querySelector('code');
+			if (!codeEl) return;
+
+			const jsonText = codeEl.textContent.trim();
+
+			// Skip if content hasn't changed
+			if (jsonText === tracked.lastJson) return;
+
+			// Try to parse JSON (may be invalid during streaming)
+			let config;
+			try {
+				config = JSON.parse(jsonText);
+			} catch {
+				// Still streaming, not valid JSON yet — silently wait
+				return;
+			}
+
+			// Valid JSON — render or re-render
+			renderOrUpdateChart(block, tracked, jsonText, config);
 		});
 	}
 
@@ -130,7 +228,7 @@
 
 			// Debounce with rAF
 			requestAnimationFrame(() => {
-				processAdds();
+				processBlocks();
 			});
 
 			// Reset idle timeout (disconnect after 5s of no mutations)
@@ -151,8 +249,8 @@
 		});
 
 		// Initial scan for existing elements
-		processAdds();
-		console.log('[Stream ChartJS] Observer initialized, scanning for chart blocks');
+		processBlocks();
+		console.log('[Stream ChartJS] Observer initialized, auto-rendering chart blocks');
 	}
 
 	/**
@@ -163,7 +261,7 @@
 		if (newUrl !== currentUrl) {
 			currentUrl = newUrl;
 			console.log('[Stream ChartJS] URL changed, re-scanning for chart blocks');
-			processAdds();
+			processBlocks();
 			// Restart observer if it was disconnected by idle timeout
 			if (!observer) {
 				initObserver();
