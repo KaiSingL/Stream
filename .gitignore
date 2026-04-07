@@ -21,3 +21,6 @@ $RECYCLE.BIN/
 # macOS build
 /Stream
 .alma-snapshots
+
+# Package output
+*.zip
