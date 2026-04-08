@@ -2,7 +2,7 @@
 // Bundled Chart.js (loaded via manifest content_scripts, bypasses CSP)
 // Targets code blocks with header <span>chartjs</span>
 // Auto-renders when valid JSON detected, re-renders on streaming content changes
-// Adds "Show Code" button after render to toggle code visibility
+// Adds "Raw" / "Render" toggle button after render to switch between chart and code views
 // MutationObserver (childList + attributes + characterData) with rAF debounce + 5s idle disconnect
 // Polling fallback (1s interval) catches missed updates after observer disconnects
 // Idempotent via WeakMap tracking + .boost-chartjs-tracked class
@@ -102,9 +102,20 @@
 		console.log('[Stream ChartJS] Chart rendered successfully');
 	}
 
+	const RAW_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4">
+				<polyline points="16 18 22 12 16 6"></polyline>
+				<polyline points="8 6 2 12 8 18"></polyline>
+			</svg>`;
+	const RENDER_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bar-chart-3 size-4">
+				<path d="M3 3v18h18"></path>
+				<path d="M18 17V9"></path>
+				<path d="M13 17V5"></path>
+				<path d="M8 17v-3"></path>
+			</svg>`;
+
 	/**
-	 * Injects "Show Code" button next to the Collapse button.
-	 * Toggles code visibility on click.
+	 * Injects "Raw" / "Render" toggle button next to the Collapse button.
+	 * Defaults to "Raw" (chart visible, clicking shows code).
 	 * @param {HTMLElement} block - The code block container element.
 	 * @param {Object} tracked - The tracked state object from WeakMap.
 	 */
@@ -115,19 +126,12 @@
 		const collapseGroup = collapseBtn.parentElement;
 		if (!collapseGroup) return;
 
-		// Avoid duplicate buttons
 		if (collapseGroup.querySelector('.boost-show-code-btn')) return;
 
 		const showCodeBtn = document.createElement('button');
 		showCodeBtn.type = 'button';
 		showCodeBtn.className = 'inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-100 [&_svg]:shrink-0 select-none text-fg-secondary hover:text-fg-primary disabled:hover:text-fg-secondary hover:bg-surface-l2 disabled:hover:bg-surface-l1 h-8 rounded-xl px-3 text-xs bg-transparent boost-show-code-btn';
-		showCodeBtn.innerHTML = `
-			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4">
-				<polyline points="16 18 22 12 16 6"></polyline>
-				<polyline points="8 6 2 12 8 18"></polyline>
-			</svg>
-			<span class="hidden @sm/code-block:block">Show Code</span>
-		`;
+		showCodeBtn.innerHTML = `${RAW_ICON_SVG}<span class="hidden @sm/code-block:block">Raw</span>`;
 
 		showCodeBtn.addEventListener('click', (e) => {
 			e.stopImmediatePropagation();
@@ -139,9 +143,11 @@
 	}
 
 	/**
-	 * Toggles code visibility and updates button text.
+	 * Toggles between chart view and raw code view.
+	 * "Raw" (code icon) → shows code, hides chart, swaps to "Render" (chart icon)
+	 * "Render" (chart icon) → shows chart, hides code, swaps to "Raw" (code icon)
 	 * @param {Object} tracked - The tracked state object from WeakMap.
-	 * @param {HTMLElement} btn - The Show Code button element.
+	 * @param {HTMLElement} btn - The toggle button element.
 	 */
 	function toggleCodeVisibility(tracked, btn) {
 		const { codeEl, preEl, canvas } = tracked;
@@ -151,17 +157,15 @@
 		const spanEl = btn.querySelector('span');
 
 		if (isHidden) {
-			// Show code → hide chart
 			if (preEl) preEl.style.display = '';
 			codeEl.style.display = '';
 			if (canvas) canvas.style.display = 'none';
-			if (spanEl) spanEl.textContent = 'Hide Code';
+			btn.innerHTML = `${RENDER_ICON_SVG}<span class="hidden @sm/code-block:block">Render</span>`;
 		} else {
-			// Hide code → show chart
 			if (preEl) preEl.style.display = 'none';
 			codeEl.style.display = 'none';
 			if (canvas) canvas.style.display = '';
-			if (spanEl) spanEl.textContent = 'Show Code';
+			btn.innerHTML = `${RAW_ICON_SVG}<span class="hidden @sm/code-block:block">Raw</span>`;
 		}
 	}
 
