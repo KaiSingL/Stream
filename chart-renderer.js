@@ -21,85 +21,116 @@
 
 	/**
 	 * WeakMap to track block state for streaming updates and re-rendering.
-	 * @type {WeakMap<HTMLElement, {lastJson: string, chartInstance: Chart|null, canvas: HTMLCanvasElement|null, codeEl: HTMLElement|null, preEl: HTMLElement|null, showCodeBtn: HTMLElement|null}>}
+	 * @type {WeakMap<HTMLElement, {lastJson: string, chartInstance: Chart|null, canvas: HTMLCanvasElement|null, contentDiv: HTMLElement|null, chartWrapper: HTMLElement|null, showingChart: boolean, showCodeBtn: HTMLElement|null}>}
 	 */
 	const trackedBlocks = new WeakMap();
 
 	/**
 	 * Checks if a code block is a Chart.js block by looking for the "chartjs" label.
+	 * Requires a <pre> element to distinguish code blocks from header bars.
 	 * @param {HTMLElement} block - The code block container element.
 	 * @returns {boolean} True if the block is a Chart.js block.
 	 */
 	function isChartJSBlock(block) {
-		const label = block.querySelector('span.font-mono.text-xs.select-none');
+		if (!block.querySelector('pre')) return false;
+		const label = block.querySelector('span.font-mono');
 		return label && label.textContent.trim() === 'chartjs';
+	}
+
+	const LIGHT_TEXT = 'rgba(255,255,255,0.8)';
+	const GRID_LINE = 'rgba(255,255,255,0.1)';
+
+	/**
+	 * Applies dark mode color defaults for axes, legend, and gridlines.
+	 * Only sets values that aren't already specified in the config.
+	 * @param {Object} config - The Chart.js config object (mutated in place).
+	 */
+	function applyDarkModeDefaults(config) {
+		const opts = config.options;
+		if (!opts) return;
+
+		if (!opts.plugins) opts.plugins = {};
+		if (!opts.plugins.legend) opts.plugins.legend = {};
+		if (!opts.plugins.legend.labels) opts.plugins.legend.labels = {};
+		if (!opts.plugins.legend.labels.color) opts.plugins.legend.labels.color = LIGHT_TEXT;
+
+		if (opts.scales) {
+			Object.values(opts.scales).forEach((scale) => {
+				if (!scale.ticks) scale.ticks = {};
+				if (!scale.ticks.color) scale.ticks.color = LIGHT_TEXT;
+				if (!scale.grid) scale.grid = {};
+				if (!scale.grid.color) scale.grid.color = GRID_LINE;
+				if (scale.title && !scale.title.color) scale.title.color = LIGHT_TEXT;
+			});
+		}
 	}
 
 	/**
 	 * Renders or re-renders a Chart.js chart inside the given code block.
-	 * Handles streaming: keeps code element hidden but in DOM for content monitoring.
-	 * Injects "Show Code" button after first successful render.
+	 * Canvas is appended to the outer block container (not the React-managed
+	 * content div) to survive framework re-renders.
 	 * @param {HTMLElement} block - The code block container element.
 	 * @param {Object} tracked - The tracked state object from WeakMap.
 	 * @param {string} jsonText - The current JSON text content.
 	 * @param {Object} config - The parsed Chart.js config object.
 	 */
 	function renderOrUpdateChart(block, tracked, jsonText, config) {
-		const contentDiv = block.querySelector('div[style*="border-radius: 0px 0px 12px 12px"]');
-		if (!contentDiv) return;
-
-		// Get or create canvas
-		let canvas = tracked.canvas;
-		let isFirstRender = false;
-
-		if (!canvas) {
-			isFirstRender = true;
-			canvas = document.createElement('canvas');
-			canvas.style.cssText = 'width:100%; height:400px; display:block;';
-			tracked.canvas = canvas;
+		const contentDiv = block.querySelector('pre')?.parentElement;
+		if (!contentDiv) {
+			console.warn('[Stream ChartJS] contentDiv not found for block', block);
+			return;
 		}
 
-		// Destroy existing chart instance if re-rendering
+		let canvas = tracked.canvas;
+		const needInsert = !canvas || !tracked.chartWrapper || !tracked.chartWrapper.parentElement || !block.contains(tracked.chartWrapper);
+
+		if (needInsert) {
+			if (canvas && tracked.chartInstance) {
+				tracked.chartInstance.destroy();
+				tracked.chartInstance = null;
+			}
+
+			canvas = document.createElement('canvas');
+			canvas.className = 'boost-chart-canvas';
+			tracked.canvas = canvas;
+			tracked.contentDiv = contentDiv;
+
+			const chartWrapper = document.createElement('div');
+			chartWrapper.className = 'boost-chart-wrapper';
+			chartWrapper.style.cssText = 'position:relative; width:100%; height:400px; overflow:hidden;';
+			chartWrapper.appendChild(canvas);
+			tracked.chartWrapper = chartWrapper;
+
+			contentDiv.style.display = 'none';
+			block.appendChild(chartWrapper);
+
+			injectShowCodeButton(block, tracked);
+		}
+
 		if (tracked.chartInstance) {
 			tracked.chartInstance.destroy();
 			tracked.chartInstance = null;
 		}
 
-		// First render: hide code elements, insert canvas
-		if (isFirstRender) {
-			const codeEl = contentDiv.querySelector('code');
-			const preEl = codeEl?.closest('pre');
-
-			if (codeEl) {
-				codeEl.style.display = 'none';
-				tracked.codeEl = codeEl;
-			}
-			if (preEl) {
-				preEl.style.display = 'none';
-				tracked.preEl = preEl;
-			}
-
-			contentDiv.appendChild(canvas);
-
-			// Inject "Show Code" button
-			injectShowCodeButton(block, tracked);
-		}
-
-		// Create new chart
 		if (typeof window.Chart === 'undefined') {
 			console.error('[Stream ChartJS] Chart.js not available — check manifest content_scripts order');
 			return;
 		}
 
-		const ctx = canvas.getContext('2d');
 		if (!config.options) config.options = {};
 		config.options.responsive = true;
 		config.options.maintainAspectRatio = false;
 
-		tracked.chartInstance = new window.Chart(ctx, config);
+		applyDarkModeDefaults(config);
+
 		tracked.lastJson = jsonText;
 
-		console.log('[Stream ChartJS] Chart rendered successfully');
+		requestAnimationFrame(() => {
+			if (!canvas.parentElement) return;
+			const ctx = canvas.getContext('2d');
+			tracked.chartInstance = new window.Chart(ctx, config);
+			console.log('[Stream ChartJS] Chart rendered successfully');
+		});
 	}
 
 	const RAW_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4">
@@ -143,30 +174,39 @@
 	}
 
 	/**
+	 * Enforces the correct visibility of contentDiv and chartWrapper based on
+	 * the tracked showingChart flag. Called on each poll to correct React re-renders.
+	 * @param {Object} tracked - The tracked state object from WeakMap.
+	 */
+	function enforceVisibility(tracked) {
+		const { contentDiv, chartWrapper, showingChart } = tracked;
+		if (!contentDiv) return;
+		if (showingChart) {
+			if (contentDiv.style.display !== 'none') contentDiv.style.display = 'none';
+			if (chartWrapper && chartWrapper.style.display === 'none') chartWrapper.style.display = '';
+		} else {
+			if (contentDiv.style.display === 'none') contentDiv.style.display = '';
+			if (chartWrapper && chartWrapper.style.display !== 'none') chartWrapper.style.display = 'none';
+		}
+	}
+
+	/**
 	 * Toggles between chart view and raw code view.
-	 * "Raw" (code icon) → shows code, hides chart, swaps to "Render" (chart icon)
-	 * "Render" (chart icon) → shows chart, hides code, swaps to "Raw" (code icon)
+	 * Uses tracked.showingChart flag for state (not DOM) to stay reliable
+	 * across React re-renders.
 	 * @param {Object} tracked - The tracked state object from WeakMap.
 	 * @param {HTMLElement} btn - The toggle button element.
 	 */
 	function toggleCodeVisibility(tracked, btn) {
-		const { codeEl, preEl, canvas } = tracked;
-		if (!codeEl) return;
+		tracked.showingChart = !tracked.showingChart;
 
-		const isHidden = codeEl.style.display === 'none';
-		const spanEl = btn.querySelector('span');
-
-		if (isHidden) {
-			if (preEl) preEl.style.display = '';
-			codeEl.style.display = '';
-			if (canvas) canvas.style.display = 'none';
-			btn.innerHTML = `${RENDER_ICON_SVG}<span class="hidden @sm/code-block:block">Render</span>`;
-		} else {
-			if (preEl) preEl.style.display = 'none';
-			codeEl.style.display = 'none';
-			if (canvas) canvas.style.display = '';
+		if (tracked.showingChart) {
 			btn.innerHTML = `${RAW_ICON_SVG}<span class="hidden @sm/code-block:block">Raw</span>`;
+		} else {
+			btn.innerHTML = `${RENDER_ICON_SVG}<span class="hidden @sm/code-block:block">Render</span>`;
 		}
+
+		enforceVisibility(tracked);
 	}
 
 	/**
@@ -175,7 +215,7 @@
 	 */
 	function processBlocks() {
 		// Find and track new chartjs blocks
-		document.querySelectorAll('div.border.rounded-xl:not(.boost-chartjs-tracked)').forEach((block) => {
+		document.querySelectorAll('[class*="rounded-xl"]:not(.boost-chartjs-tracked)').forEach((block) => {
 			if (!isChartJSBlock(block)) return;
 
 			block.classList.add('boost-chartjs-tracked');
@@ -183,34 +223,44 @@
 				lastJson: '',
 				chartInstance: null,
 				canvas: null,
-				codeEl: null,
-				preEl: null,
+				contentDiv: null,
+				chartWrapper: null,
+				showingChart: true,
 				showCodeBtn: null
 			});
 		});
 
 		// Process all tracked blocks for streaming updates
-		document.querySelectorAll('div.border.rounded-xl.boost-chartjs-tracked').forEach((block) => {
+		document.querySelectorAll('.boost-chartjs-tracked').forEach((block) => {
 			const tracked = trackedBlocks.get(block);
 			if (!tracked) return;
 
-			const contentDiv = block.querySelector('div[style*="border-radius: 0px 0px 12px 12px"]');
-			if (!contentDiv) return;
+			const contentDiv = block.querySelector('pre')?.parentElement;
+			if (!contentDiv) {
+				console.warn('[Stream ChartJS] contentDiv not found for tracked block');
+				return;
+			}
 
 			const codeEl = contentDiv.querySelector('code');
 			if (!codeEl) return;
 
 			const jsonText = codeEl.textContent.trim();
 
-			// Skip if content hasn't changed
-			if (jsonText === tracked.lastJson) return;
+			tracked.contentDiv = contentDiv;
+
+			const canvasAttached = tracked.chartWrapper && tracked.chartWrapper.parentElement && block.contains(tracked.chartWrapper);
+
+			if (jsonText === tracked.lastJson && canvasAttached) {
+				enforceVisibility(tracked);
+				return;
+			}
 
 			// Try to parse JSON (may be invalid during streaming)
 			let config;
 			try {
 				config = JSON.parse(jsonText);
-			} catch {
-				// Still streaming, not valid JSON yet — silently wait
+			} catch (e) {
+				console.warn('[Stream ChartJS] JSON parse failed:', e.message, jsonText.slice(0, 80));
 				return;
 			}
 
