@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version matches tag
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' manifest.json)
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::manifest.json version ($VERSION) != tag ($TAG)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build extension zip
+        run: |
+          zip -r "Stream-v${{ steps.version.outputs.version }}.zip" \
+            manifest.json buttons.js chart-renderer.js lib/ icons/ \
+            -x "*.DS_Store" "__MACOSX/*" "._*"
+
+      - name: Create release and upload asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "Stream-v${{ steps.version.outputs.version }}.zip" \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME"
