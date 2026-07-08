@@ -3,7 +3,7 @@
 // When clicked, the PromptList button shows a dropdown with previews of user messages, allowing navigation to each message.
 // The Section Toggle button collapses all sections in the conversation.
 
-console.log('PromptList extension loaded');
+console.log('[Stream] PromptList extension loaded');
 
 /**
  * Constants for selectors, classes, and styles.
@@ -535,7 +535,7 @@ function resetSectionToggleToCollapse() {
 			if (ariaSpan) ariaSpan.innerHTML = `<p>${tooltipText}</p>`;
 		}
 
-		console.log('Section toggle reset to collapse state');
+		console.log('[Stream] PromptList Section toggle reset to collapse state');
 	}
 }
 
@@ -551,7 +551,7 @@ function addButtons() {
 	if (!isChatPage) {
 		if (promptButton) promptButton.style.display = 'none';
 		if (toggleButton) toggleButton.style.display = 'none';
-		console.log('Hiding buttons for URL:', window.location.pathname);
+		console.log('[Stream] PromptList Hiding buttons for URL:', window.location.pathname);
 		return;
 	}
 
@@ -571,7 +571,7 @@ let currentUrl = window.location.href;
 function handleUrlChange() {
 	const newUrl = window.location.href;
 	if (newUrl !== currentUrl) {
-		console.log('URL changed from', currentUrl, 'to', newUrl);
+		console.log('[Stream] PromptList URL changed from', currentUrl, 'to', newUrl);
 		currentUrl = newUrl;
 		addButtons();
 		resetSectionToggleToCollapse();

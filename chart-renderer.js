@@ -77,7 +77,7 @@
 	function renderOrUpdateChart(block, tracked, jsonText, config) {
 		const contentDiv = block.querySelector('pre')?.parentElement;
 		if (!contentDiv) {
-			console.warn('[Stream ChartJS] contentDiv not found for block', block);
+			console.warn('[Stream] ChartJS contentDiv not found for block', block);
 			return;
 		}
 
@@ -113,7 +113,7 @@
 		}
 
 		if (typeof window.Chart === 'undefined') {
-			console.error('[Stream ChartJS] Chart.js not available — check manifest content_scripts order');
+			console.error('[Stream] ChartJS Chart.js not available — check manifest content_scripts order');
 			return;
 		}
 
@@ -129,7 +129,7 @@
 			if (!canvas.parentElement) return;
 			const ctx = canvas.getContext('2d');
 			tracked.chartInstance = new window.Chart(ctx, config);
-			console.log('[Stream ChartJS] Chart rendered successfully');
+			console.log('[Stream] ChartJS Chart rendered successfully');
 		});
 	}
 
@@ -237,7 +237,7 @@
 
 			const contentDiv = block.querySelector('pre')?.parentElement;
 			if (!contentDiv) {
-				console.warn('[Stream ChartJS] contentDiv not found for tracked block');
+				console.warn('[Stream] ChartJS contentDiv not found for tracked block');
 				return;
 			}
 
@@ -260,7 +260,7 @@
 			try {
 				config = JSON.parse(jsonText);
 			} catch (e) {
-				console.warn('[Stream ChartJS] JSON parse failed:', e.message, jsonText.slice(0, 80));
+				console.warn('[Stream] ChartJS JSON parse failed:', e.message, jsonText.slice(0, 80));
 				return;
 			}
 
@@ -307,7 +307,7 @@
 
 		// Initial scan for existing elements
 		processBlocks();
-		console.log('[Stream ChartJS] Observer initialized, auto-rendering chart blocks');
+		console.log('[Stream] ChartJS Observer initialized, auto-rendering chart blocks');
 	}
 
 	/**
@@ -317,7 +317,7 @@
 		const newUrl = window.location.href;
 		if (newUrl !== currentUrl) {
 			currentUrl = newUrl;
-			console.log('[Stream ChartJS] URL changed, re-scanning for chart blocks');
+			console.log('[Stream] ChartJS URL changed, re-scanning for chart blocks');
 			processBlocks();
 			// Restart observer if it was disconnected by idle timeout
 			if (!observer) {
