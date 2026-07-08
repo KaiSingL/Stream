@@ -12,11 +12,26 @@ const CONSTANTS = {
 	// URL checks
 	CHAT_PATHS: ['/chat/', '/c/', '/project/'],
 
-	// Selectors
-	BUTTON_CONTAINER_SELECTOR: '.absolute.flex.flex-row.items-center.ms-auto.end-3',
-	USER_MESSAGES_SELECTOR: '.flex.flex-col.items-end .message-bubble',
+	// Selectors - legacy (kept for backward compatibility with older grok.com DOM)
+	BUTTON_CONTAINER_SELECTOR_LEGACY: '.absolute.flex.flex-row.items-center.ms-auto.end-3',
+	USER_MESSAGES_SELECTOR_LEGACY: '.flex.flex-col.items-end .message-bubble',
+	CHAT_CONTAINER_SELECTOR_LEGACY: '.w-full.h-full.overflow-y-auto.overflow-x-hidden.scrollbar-gutter-stable.flex.flex-col.items-center.px-gutter',
+
+	// Selectors - current (class-token based, order-independent via [class~="..."])
+	BUTTON_CONTAINER_SELECTOR_RIGHT: 'div.flex.shrink-0.flex-row.items-center',
+	USER_MESSAGES_SELECTOR_TOKEN: '[class~="items-end"] .message-bubble',
+	CHAT_CONTAINER_SELECTOR_TOKEN: 'div[class~="overflow-y-auto"][class~="overflow-x-hidden"]',
+	CHAT_CONTAINER_SELECTOR_FALLBACK: 'div[class~="overflow-y-auto"]',
+
+	// Native nav button anchors (aria-label based) used as primary container strategy
+	NAV_FILES_BUTTON_SELECTOR: 'button[aria-label="Files"]',
+	NAV_MORE_BUTTON_SELECTOR: 'button[aria-label="More"]',
+
+	// Top nav validation selector (matches the nav root by its stable position tokens)
+	NAV_ROOT_VALIDATION_SELECTOR: 'div[class~="top-0"][class~="inset-x-0"]',
+
+	// Stable selectors (unchanged)
 	COLLAPSE_BUTTON_SELECTOR: 'button[aria-label="Collapse"]',
-	CHAT_CONTAINER_SELECTOR: '.w-full.h-full.overflow-y-auto.overflow-x-hidden.scrollbar-gutter-stable.flex.flex-col.items-center.px-gutter',
 
 	// Button IDs
 	PROMPT_LIST_BUTTON_ID: 'prompt-list-button',
@@ -70,6 +85,90 @@ const CONSTANTS = {
 };
 
 /**
+ * Selector resolvers - multi-strategy lookups that survive grok.com DOM/class reshuffles.
+ * Each resolver tries several strategies in order and returns the first match.
+ */
+
+/**
+ * Checks whether an element lives inside the top navigation bar.
+ * Used to validate that a candidate container is the real nav button cluster.
+ * @param {HTMLElement} el - The candidate element.
+ * @returns {boolean} True if the element is within the top nav.
+ */
+function isInTopNav(el) {
+	if (!el) return false;
+	return el.closest(CONSTANTS.NAV_ROOT_VALIDATION_SELECTOR) !== null;
+}
+
+/**
+ * Resolves the container that holds the extension buttons in the top nav.
+ * Strategies (most specific first): native Files button parent, native More button parent,
+ * right-cluster class match (validated against top nav), then legacy selector.
+ * @returns {HTMLElement|null} The button container, or null if none found.
+ */
+function resolveButtonContainer() {
+	const strategies = [
+		() => {
+			const btn = document.querySelector(CONSTANTS.NAV_FILES_BUTTON_SELECTOR);
+			return btn ? btn.parentElement : null;
+		},
+		() => {
+			const btn = document.querySelector(CONSTANTS.NAV_MORE_BUTTON_SELECTOR);
+			return btn ? btn.parentElement : null;
+		},
+		() => {
+			const el = document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR_RIGHT);
+			return (el && isInTopNav(el)) ? el : null;
+		},
+		() => document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR_LEGACY),
+	];
+	for (const strategy of strategies) {
+		const container = strategy();
+		if (container) return container;
+	}
+	return null;
+}
+
+/**
+ * Resolves all user message bubbles in the chat body.
+ * Strategies: legacy selector, token-based items-end ancestor match, then
+ * all .message-bubble filtered to items-end ancestors.
+ * @returns {NodeListOf<HTMLElement>|HTMLElement[]} The user message elements.
+ */
+function resolveUserMessages() {
+	let msgs = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR_LEGACY);
+	if (msgs.length) return msgs;
+
+	msgs = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR_TOKEN);
+	if (msgs.length) return msgs;
+
+	msgs = document.querySelectorAll('.message-bubble');
+	return Array.from(msgs).filter(msg => msg.closest('[class~="items-end"]'));
+}
+
+/**
+ * Resolves the scrollable chat container.
+ * Strategies: legacy selector (trusted), token-based overflow match, then any
+ * overflow-y-auto div - the latter two validated by containing a .message-bubble.
+ * Returns null when no validated container is found so callers can fall back to
+ * scrollIntoView rather than scrolling the wrong element.
+ * @returns {HTMLElement|null} The chat scroll container, or null.
+ */
+function resolveChatContainer() {
+	const legacy = document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR_LEGACY);
+	if (legacy) return legacy;
+
+	const candidates = [
+		document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR_TOKEN),
+		document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR_FALLBACK),
+	];
+	for (const el of candidates) {
+		if (el && el.querySelector('.message-bubble')) return el;
+	}
+	return null;
+}
+
+/**
  * Utility functions.
  */
 
@@ -92,7 +191,7 @@ function getPreview(text, charCount = 100) {
  * @param {number} offset - The offset in pixels from the top.
  */
 function scrollToElementWithOffset(element, offset = 50) {
-	const container = document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR);
+	const container = resolveChatContainer();
 	if (container) {
 		// Scroll within the container with offset
 		const rect = element.getBoundingClientRect();
@@ -114,7 +213,8 @@ function scrollToElementWithOffset(element, offset = 50) {
  * @returns {HTMLElement|null} The response element or null if not found.
  */
 function findCorrespondingResponse(userMessage) {
-	const userWrapper = userMessage.closest('.flex.flex-col.items-end');
+	let userWrapper = userMessage.closest('.flex.flex-col.items-end');
+	if (!userWrapper) userWrapper = userMessage.closest('[class~="items-end"]');
 	if (!userWrapper) return null;
 
 	const outerWrapper = userWrapper.parentElement;
@@ -259,7 +359,7 @@ function toggleDropdown(button) {
 		return;
 	}
 
-	const userMessages = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR);
+	const userMessages = resolveUserMessages();
 	dropdown.innerHTML = '';
 
 	userMessages.forEach((msg) => {
@@ -446,7 +546,7 @@ function addButtons() {
 	const isChatPage = CONSTANTS.CHAT_PATHS.some(path => window.location.pathname.startsWith(path));
 	const promptButton = document.querySelector(`#${CONSTANTS.PROMPT_LIST_BUTTON_ID}`);
 	const toggleButton = document.querySelector(`#${CONSTANTS.SECTION_TOGGLE_BUTTON_ID}`);
-	const container = document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR);
+	const container = resolveButtonContainer();
 
 	if (!isChatPage) {
 		if (promptButton) promptButton.style.display = 'none';
