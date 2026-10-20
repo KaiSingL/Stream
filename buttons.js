@@ -9,6 +9,9 @@ console.log('[Stream] PromptList extension loaded');
  * Constants for selectors, classes, and styles.
  */
 const CONSTANTS = {
+	// Set true to log container-resolution details (strategies tried, matches, rejections)
+	DEBUG: false,
+
 	// URL checks
 	CHAT_PATHS: ['/chat/', '/c/', '/project/'],
 
@@ -26,6 +29,11 @@ const CONSTANTS = {
 	// Native nav button anchors (aria-label based) used as primary container strategy
 	NAV_FILES_BUTTON_SELECTOR: 'button[aria-label="Files"]',
 	NAV_MORE_BUTTON_SELECTOR: 'button[aria-label="More"]',
+	NAV_SHARE_BUTTON_SELECTOR: 'button[aria-label="Share Project"]',
+	NAV_TOGGLE_PANEL_BUTTON_SELECTOR: 'button[aria-label="Toggle Right Panel"]',
+
+	// Header-group validation: presence of either button marks a container as the project header group
+	HEADER_GROUP_SIGNAL_SELECTOR: 'button[aria-label="Share Project"], button[aria-label="Toggle Right Panel"]',
 
 	// Top nav validation selector (matches the nav root by its stable position tokens)
 	NAV_ROOT_VALIDATION_SELECTOR: 'div[class~="top-0"][class~="inset-x-0"]',
@@ -49,8 +57,8 @@ const CONSTANTS = {
 		'hover:bg-button-ghost-hover'
 	],
 
-	// Button styles
-	BUTTON_STYLES: { opacity: '1', width: '40px', height: '40px' },
+	// Button styles (32px to match the native h-8 w-8 nav buttons)
+	BUTTON_STYLES: { opacity: '1', width: '32px', height: '32px' },
 
 	// Tooltip common classes
 	TOOLTIP_CLASSES: 'z-50 overflow-hidden rounded-md bg-popover shadow-sm dark:shadow-none px-3 py-1.5 text-xs text-popover-foreground pointer-events-none max-w-80 text-wrap animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
@@ -101,30 +109,81 @@ function isInTopNav(el) {
 }
 
 /**
- * Resolves the container that holds the extension buttons in the top nav.
- * Strategies (most specific first): native Files button parent, native More button parent,
- * right-cluster class match (validated against top nav), then legacy selector.
+ * Validates a candidate button container.
+ * Rejects detached, hidden, or zero-size elements and containers that are neither
+ * in the top nav nor the project header group (e.g. artifact panel toolbars that
+ * embed their own "Files" button).
+ * @param {HTMLElement} el - The candidate container.
+ * @returns {{ok: boolean, reason: string}} Validation result with rejection reason.
+ */
+function validateButtonContainer(el) {
+	if (!el) return { ok: false, reason: 'no match' };
+	if (!el.isConnected) return { ok: false, reason: 'disconnected' };
+	const rect = el.getBoundingClientRect();
+	if (rect.width === 0 && rect.height === 0) return { ok: false, reason: 'zero-size' };
+	if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) {
+		return { ok: false, reason: 'hidden (display/visibility)' };
+	}
+	if (!isInTopNav(el) && !el.querySelector(CONSTANTS.HEADER_GROUP_SIGNAL_SELECTOR)) {
+		return { ok: false, reason: 'outside top nav and header group' };
+	}
+	return { ok: true, reason: 'ok' };
+}
+
+/**
+ * Logs the winning container strategy when DEBUG is enabled.
+ * @param {string} name - Strategy name that produced the container.
+ * @param {HTMLElement} container - The resolved container.
+ */
+function logContainerResolution(name, container) {
+	if (!CONSTANTS.DEBUG) return;
+	console.log(`[Stream] PromptList button container resolved via "${name}":`, container.className);
+}
+
+/**
+ * Resolves the container that holds the extension buttons in the top nav or
+ * project header. Strategies (most specific first): native Files / More /
+ * Share Project / Toggle Right Panel button parents, right-cluster class match
+ * validated against the top nav, then the legacy selector (trusted last resort).
  * @returns {HTMLElement|null} The button container, or null if none found.
  */
 function resolveButtonContainer() {
-	const strategies = [
-		() => {
-			const btn = document.querySelector(CONSTANTS.NAV_FILES_BUTTON_SELECTOR);
-			return btn ? btn.parentElement : null;
-		},
-		() => {
-			const btn = document.querySelector(CONSTANTS.NAV_MORE_BUTTON_SELECTOR);
-			return btn ? btn.parentElement : null;
-		},
-		() => {
-			const el = document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR_RIGHT);
-			return (el && isInTopNav(el)) ? el : null;
-		},
-		() => document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR_LEGACY),
+	const anchorSelectors = [
+		['files-anchor', CONSTANTS.NAV_FILES_BUTTON_SELECTOR],
+		['more-anchor', CONSTANTS.NAV_MORE_BUTTON_SELECTOR],
+		['share-anchor', CONSTANTS.NAV_SHARE_BUTTON_SELECTOR],
+		['toggle-panel-anchor', CONSTANTS.NAV_TOGGLE_PANEL_BUTTON_SELECTOR],
 	];
+	const strategies = [
+		...anchorSelectors.map(([name, selector]) => () => ({
+			name,
+			container: document.querySelector(selector)?.parentElement || null,
+		})),
+		() => ({
+			name: 'right-cluster-in-nav',
+			container: document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR_RIGHT),
+		}),
+		// Legacy container is an exact multi-class match; trusted without validation
+		// so older grok.com DOM variants keep working.
+		() => ({
+			name: 'legacy-selector',
+			container: document.querySelector(CONSTANTS.BUTTON_CONTAINER_SELECTOR_LEGACY),
+			skipValidation: true,
+		}),
+	];
+
+	const rejections = [];
 	for (const strategy of strategies) {
-		const container = strategy();
-		if (container) return container;
+		const { name, container, skipValidation } = strategy();
+		const verdict = skipValidation ? { ok: true, reason: 'trusted' } : validateButtonContainer(container);
+		if (verdict.ok) {
+			logContainerResolution(name, container);
+			return container;
+		}
+		rejections.push(`${name}: ${verdict.reason}`);
+	}
+	if (CONSTANTS.DEBUG) {
+		console.log('[Stream] PromptList no button container matched. Rejections:', rejections.join('; '));
 	}
 	return null;
 }
@@ -540,6 +599,30 @@ function resetSectionToggleToCollapse() {
 }
 
 /**
+ * Moves an injected button into the resolved container when it currently lives
+ * elsewhere (stale SPA container, prior mis-injection, or site re-render).
+ * @param {HTMLElement} button - The injected button to re-home.
+ * @param {HTMLElement} container - The resolved target container.
+ */
+function rehomeButton(button, container) {
+	if (!button || button.parentElement === container) return;
+	const previousParent = button.parentElement;
+	if (button.id === CONSTANTS.PROMPT_LIST_BUTTON_ID) {
+		container.insertBefore(button, container.firstChild);
+	} else {
+		const promptButton = container.querySelector(`#${CONSTANTS.PROMPT_LIST_BUTTON_ID}`);
+		if (promptButton) {
+			container.insertBefore(button, promptButton.nextSibling);
+		} else {
+			container.appendChild(button);
+		}
+	}
+	if (CONSTANTS.DEBUG) {
+		console.log('[Stream] PromptList re-homed button', button.id, 'from', previousParent, 'to', container);
+	}
+}
+
+/**
  * Adds or updates buttons in the UI based on current URL.
  */
 function addButtons() {
@@ -551,7 +634,7 @@ function addButtons() {
 	if (!isChatPage) {
 		if (promptButton) promptButton.style.display = 'none';
 		if (toggleButton) toggleButton.style.display = 'none';
-		console.log('[Stream] PromptList Hiding buttons for URL:', window.location.pathname);
+		if (CONSTANTS.DEBUG) console.log('[Stream] PromptList hiding buttons for URL:', window.location.pathname);
 		return;
 	}
 
@@ -559,6 +642,10 @@ function addButtons() {
 	if (toggleButton) toggleButton.style.display = '';
 
 	if (!container) return;
+
+	// Move buttons that live outside the resolved container before deciding to create new ones
+	rehomeButton(promptButton, container);
+	rehomeButton(toggleButton, container);
 
 	if (!promptButton) createPromptListButton(container);
 	if (!toggleButton) createSectionToggleButton(container);
