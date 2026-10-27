@@ -1,14 +1,25 @@
 {
 	"manifest_version": 3,
 	"name": "Stream: Grok Prompt Navigator",
-	"version": "1.11.3",
+	"version": "1.12.0",
 	"description": "Adds a PromptList button and code block collapse to grok.com chat to view user message previews",
+	"action": {
+		"default_popup": "popup.html",
+		"default_title": "Stream settings"
+	},
+	"permissions": ["storage"],
 	"content_scripts": [
 		{
 			"matches": ["https://grok.com/*"],
-			"js": ["lib/chart.umd.min.js", "buttons.js", "chart-renderer.js"],
+			"js": ["settings.js", "lib/chart.umd.min.js", "buttons.js", "chart-renderer.js"],
 			"run_at": "document_end",
 			"world": "MAIN",
+			"all_frames": true
+		},
+		{
+			"matches": ["https://grok.com/*"],
+			"js": ["settings-relay.js"],
+			"run_at": "document_start",
 			"all_frames": true
 		}
 	],

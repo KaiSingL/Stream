@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" href="popup.css">
+	<title>Stream</title>
+</head>
+<body>
+	<header class="header">
+		<span class="title">Stream</span>
+		<span class="header-right">
+			<span class="version" id="version"></span>
+			<button type="button" id="reload-button" class="icon-button" data-tip="Reload extension" aria-label="Reload extension">
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+					<path d="M21 3v5h-5"/>
+				</svg>
+			</button>
+		</span>
+	</header>
+
+	<main class="features">
+		<label class="row" for="toggle-prompt-list">
+			<span class="label">Prompt List</span>
+			<span class="switch">
+				<input type="checkbox" id="toggle-prompt-list" data-setting="promptList">
+				<span class="slider"></span>
+			</span>
+		</label>
+
+		<label class="row" for="toggle-collapse">
+			<span class="label">Code Block Collapse</span>
+			<span class="switch">
+				<input type="checkbox" id="toggle-collapse" data-setting="collapse">
+				<span class="slider"></span>
+			</span>
+		</label>
+
+		<label class="row" for="toggle-chartjs">
+			<span class="label">Chart.js Rendering</span>
+			<span class="switch">
+				<input type="checkbox" id="toggle-chartjs" data-setting="chartjs">
+				<span class="slider"></span>
+			</span>
+		</label>
+	</main>
+
+	<script src="popup.js"></script>
+</body>
+</html>

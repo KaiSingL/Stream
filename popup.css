@@ -1,0 +1,171 @@
+/* Stream extension popup — dark styling to match the grok.com popover look. */
+
+:root {
+	color-scheme: dark;
+	--bg: #1b1b1f;
+	--bg-raised: #232328;
+	--bg-active: #2c2c32;
+	--border: #34343a;
+	--text: #ececec;
+	--text-secondary: #9b9ba3;
+	--accent: #ffffff;
+}
+
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	width: 272px;
+	background: var(--bg);
+	color: var(--text);
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	font-size: 13px;
+	user-select: none;
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 14px 10px;
+	border-bottom: 1px solid var(--border);
+}
+
+.title {
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: 0.2px;
+}
+
+.header-right {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.version {
+	font-size: 11px;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Icon-only reload button with hover tooltip */
+.icon-button {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	background: transparent;
+	border: none;
+	border-radius: 8px;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background 120ms ease, color 120ms ease, transform 80ms ease;
+}
+
+.icon-button:hover {
+	background: var(--bg-raised);
+	color: var(--text);
+}
+
+.icon-button:active {
+	background: var(--bg-active);
+	transform: scale(0.92);
+}
+
+.icon-button::after {
+	content: attr(data-tip);
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	padding: 4px 8px;
+	background: var(--bg-active);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 11px;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 100ms ease 300ms;
+	z-index: 10;
+}
+
+.icon-button:hover::after {
+	opacity: 1;
+}
+
+.features {
+	padding: 6px 6px;
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 9px 8px;
+	border-radius: 10px;
+	cursor: pointer;
+}
+
+.row:hover {
+	background: var(--bg-raised);
+}
+
+.label {
+	flex: 1;
+}
+
+/* Toggle switch */
+.switch {
+	position: relative;
+	display: inline-block;
+	width: 34px;
+	height: 20px;
+	flex-shrink: 0;
+}
+
+.switch input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.slider {
+	position: absolute;
+	inset: 0;
+	background: #45454c;
+	border-radius: 999px;
+	transition: background 120ms ease;
+}
+
+.slider::before {
+	content: '';
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	left: 2px;
+	top: 2px;
+	background: var(--accent);
+	border-radius: 50%;
+	transition: transform 120ms ease;
+}
+
+.switch input:checked + .slider {
+	background: #7c7c85;
+}
+
+.switch input:checked + .slider::before {
+	transform: translateX(14px);
+}
+
+.switch input:focus-visible + .slider {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}

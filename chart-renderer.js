@@ -210,10 +210,48 @@
 	}
 
 	/**
+	 * Checks whether the Chart.js rendering feature is enabled in the popup.
+	 * Defaults to enabled when the settings bridge is unavailable.
+	 * @returns {boolean} True if rendering should run.
+	 */
+	function isChartJSEnabled() {
+		return !window.__streamSettings || window.__streamSettings.get().chartjs !== false;
+	}
+
+	/**
+	 * Tears down all rendered charts and restores the raw code view, used when
+	 * the Chart.js feature is disabled from the popup. Blocks are untracked so
+	 * they are picked up fresh if the feature is re-enabled.
+	 */
+	function teardownCharts() {
+		document.querySelectorAll('.boost-chartjs-tracked').forEach((block) => {
+			const tracked = trackedBlocks.get(block);
+			if (tracked) {
+				if (tracked.chartInstance) {
+					tracked.chartInstance.destroy();
+					tracked.chartInstance = null;
+				}
+				if (tracked.chartWrapper && tracked.chartWrapper.parentElement) {
+					tracked.chartWrapper.remove();
+				}
+				if (tracked.contentDiv) tracked.contentDiv.style.display = '';
+				if (tracked.showCodeBtn) tracked.showCodeBtn.remove();
+			}
+			block.classList.remove('boost-chartjs-tracked');
+			trackedBlocks.delete(block);
+		});
+	}
+
+	/**
 	 * Processes all chartjs blocks: finds new ones, starts tracking,
 	 * and re-renders if streaming content has changed with valid JSON.
 	 */
 	function processBlocks() {
+		if (!isChartJSEnabled()) {
+			teardownCharts();
+			return;
+		}
+
 		// Find and track new chartjs blocks
 		document.querySelectorAll('[class*="rounded-xl"]:not(.boost-chartjs-tracked)').forEach((block) => {
 			if (!isChartJSBlock(block)) return;
@@ -342,6 +380,13 @@
 
 	// Start the enhancer
 	initObserver();
+
+	// React to popup setting changes: disable feature restores raw code view.
+	if (window.__streamSettings) {
+		window.__streamSettings.listen((settings) => {
+			if (settings.chartjs === false) teardownCharts();
+		});
+	}
 
 	// Polling fallback (catches missed updates after observer disconnects)
 	setInterval(processBlocks, 1000);

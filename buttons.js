@@ -1060,14 +1060,19 @@ function rehomeButton(button, container) {
 }
 
 /**
- * Adds or updates buttons in the UI based on current URL.
+ * Adds or updates buttons in the UI based on current URL and popup settings.
  */
 function addButtons() {
 	const isChatPage = CONSTANTS.CHAT_PATHS.some(path => window.location.pathname.startsWith(path));
+	const settings = window.__streamSettings ? window.__streamSettings.get() : { promptList: true, collapse: true };
+	const showPrompt = isChatPage && settings.promptList !== false;
+	const showToggle = isChatPage && settings.collapse !== false;
 	const promptButton = document.querySelector(`#${CONSTANTS.PROMPT_LIST_BUTTON_ID}`);
 	const toggleButton = document.querySelector(`#${CONSTANTS.SECTION_TOGGLE_BUTTON_ID}`);
 	const container = resolveButtonContainer();
 
+	if (!showPrompt && promptButton) promptButton.style.display = 'none';
+	if (!showToggle && toggleButton) toggleButton.style.display = 'none';
 	if (!isChatPage) {
 		if (promptButton) promptButton.style.display = 'none';
 		if (toggleButton) toggleButton.style.display = 'none';
@@ -1075,17 +1080,17 @@ function addButtons() {
 		return;
 	}
 
-	if (promptButton) promptButton.style.display = '';
-	if (toggleButton) toggleButton.style.display = '';
+	if (showPrompt && promptButton) promptButton.style.display = '';
+	if (showToggle && toggleButton) toggleButton.style.display = '';
 
 	if (!container) return;
 
 	// Move buttons that live outside the resolved container before deciding to create new ones
-	rehomeButton(promptButton, container);
-	rehomeButton(toggleButton, container);
+	rehomeButton(showPrompt ? promptButton : null, container);
+	rehomeButton(showToggle ? toggleButton : null, container);
 
-	if (!promptButton) createPromptListButton(container);
-	if (!toggleButton) createSectionToggleButton(container);
+	if (!promptButton && showPrompt) createPromptListButton(container);
+	if (!toggleButton && showToggle) createSectionToggleButton(container);
 }
 
 /**
@@ -1125,6 +1130,16 @@ setInterval(handleUrlChange, 1000);
 // MutationObserver for dynamic UI updates
 const observer = new MutationObserver(addButtons);
 observer.observe(document.body, { childList: true, subtree: true });
+
+// React to popup setting changes: cancel in-flight work for disabled features,
+// then re-run button placement so hidden features disappear immediately.
+if (window.__streamSettings) {
+	window.__streamSettings.listen((settings) => {
+		if (settings.promptList === false) hideDropdown();
+		if (settings.collapse === false) collapseMode = 'off';
+		addButtons();
+	});
+}
 
 // Initial run
 addButtons();
