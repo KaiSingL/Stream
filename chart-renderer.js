@@ -39,6 +39,18 @@
 
 	const LIGHT_TEXT = 'rgba(255,255,255,0.8)';
 	const GRID_LINE = 'rgba(255,255,255,0.1)';
+	const SITE_EXPAND_BUTTON_SELECTOR = 'button[aria-label="Expand"]';
+
+	/**
+	 * Checks whether the site has collapsed the block's own code region (its
+	 * header button reads "Expand"). Used so chart visibility respects manual
+	 * collapsing instead of fighting it.
+	 * @param {HTMLElement} block - The code block container element.
+	 * @returns {boolean} True when the block is site-collapsed.
+	 */
+	function isBlockSiteCollapsed(block) {
+		return !!block.querySelector(SITE_EXPAND_BUTTON_SELECTOR);
+	}
 
 	/**
 	 * Applies dark mode color defaults for axes, legend, and gridlines.
@@ -166,7 +178,7 @@
 
 		showCodeBtn.addEventListener('click', (e) => {
 			e.stopImmediatePropagation();
-			toggleCodeVisibility(tracked, showCodeBtn);
+			toggleCodeVisibility(block, tracked, showCodeBtn);
 		});
 
 		collapseGroup.appendChild(showCodeBtn);
@@ -176,11 +188,20 @@
 	/**
 	 * Enforces the correct visibility of contentDiv and chartWrapper based on
 	 * the tracked showingChart flag. Called on each poll to correct React re-renders.
+	 * When the site has collapsed the block, the chart folds with it instead of
+	 * being re-asserted against the collapsed state.
+	 * @param {HTMLElement} block - The code block container element.
 	 * @param {Object} tracked - The tracked state object from WeakMap.
 	 */
-	function enforceVisibility(tracked) {
+	function enforceVisibility(block, tracked) {
 		const { contentDiv, chartWrapper, showingChart } = tracked;
 		if (!contentDiv) return;
+		if (isBlockSiteCollapsed(block)) {
+			// Site-collapsed: the code region is hidden by the site itself; fold
+			// the chart with the block and leave the rest alone.
+			if (chartWrapper && chartWrapper.style.display !== 'none') chartWrapper.style.display = 'none';
+			return;
+		}
 		if (showingChart) {
 			if (contentDiv.style.display !== 'none') contentDiv.style.display = 'none';
 			if (chartWrapper && chartWrapper.style.display === 'none') chartWrapper.style.display = '';
@@ -194,10 +215,11 @@
 	 * Toggles between chart view and raw code view.
 	 * Uses tracked.showingChart flag for state (not DOM) to stay reliable
 	 * across React re-renders.
+	 * @param {HTMLElement} block - The code block container element.
 	 * @param {Object} tracked - The tracked state object from WeakMap.
 	 * @param {HTMLElement} btn - The toggle button element.
 	 */
-	function toggleCodeVisibility(tracked, btn) {
+	function toggleCodeVisibility(block, tracked, btn) {
 		tracked.showingChart = !tracked.showingChart;
 
 		if (tracked.showingChart) {
@@ -206,7 +228,7 @@
 			btn.innerHTML = `${RENDER_ICON_SVG}<span class="hidden @sm/code-block:block">Render</span>`;
 		}
 
-		enforceVisibility(tracked);
+		enforceVisibility(block, tracked);
 	}
 
 	/**
@@ -289,7 +311,7 @@
 			const canvasAttached = tracked.chartWrapper && tracked.chartWrapper.parentElement && block.contains(tracked.chartWrapper);
 
 			if (jsonText === tracked.lastJson && canvasAttached) {
-				enforceVisibility(tracked);
+				enforceVisibility(block, tracked);
 				return;
 			}
 

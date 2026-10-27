@@ -53,6 +53,10 @@ const CONSTANTS = {
 	COLLAPSE_BUTTON_SELECTOR: 'button[aria-label="Collapse"]',
 	EXPAND_BUTTON_SELECTOR: 'button[aria-label="Expand"]',
 
+	// Blocks currently rendered as charts by chart-renderer.js; collapse skips
+	// these so the two features do not fight over the same block.
+	CHART_BLOCK_SELECTOR: '.boost-chartjs-tracked',
+
 	// Button IDs
 	PROMPT_LIST_BUTTON_ID: 'prompt-list-button',
 	SECTION_TOGGLE_BUTTON_ID: 'section-toggle-button',
@@ -667,13 +671,17 @@ async function harvestConversation(session, onProgress = null) {
 }
 
 /**
- * Clicks every visible button matching the selector.
+ * Clicks every visible button matching the selector. When collapsing, buttons
+ * inside chart-rendered blocks are skipped so the chart renderer keeps
+ * ownership of those blocks.
  * @param {string} selector - Button selector (Collapse or Expand).
+ * @param {boolean} [skipChartBlocks] - True to skip chart-rendered blocks.
  * @returns {number} The number of buttons clicked.
  */
-function clickVisibleButtons(selector) {
+function clickVisibleButtons(selector, skipChartBlocks = false) {
 	let count = 0;
 	document.querySelectorAll(selector).forEach(btn => {
+		if (skipChartBlocks && btn.closest(CONSTANTS.CHART_BLOCK_SELECTOR)) return;
 		if (btn.offsetParent !== null) {
 			btn.click();
 			count++;
@@ -692,15 +700,17 @@ function clickVisibleButtons(selector) {
  * @returns {Promise<void>}
  */
 async function sweepCodeBlockButtons(selector) {
+	const skipCharts = selector === CONSTANTS.COLLAPSE_BUTTON_SELECTOR;
+
 	// Legacy DOM (or nothing mounted): one pass over visible buttons suffices.
 	if (!document.querySelector(CONSTANTS.PLANE_ROW_SELECTOR)) {
-		clickVisibleButtons(selector);
+		clickVisibleButtons(selector, skipCharts);
 		return;
 	}
 
 	const scroller = resolveChatContainer();
 	if (!scroller) {
-		clickVisibleButtons(selector);
+		clickVisibleButtons(selector, skipCharts);
 		return;
 	}
 
@@ -714,7 +724,7 @@ async function sweepCodeBlockButtons(selector) {
 		scroller.scrollTop = Math.max(0, scroller.scrollTop - scroller.clientHeight);
 		steps++;
 		await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
-		clickVisibleButtons(selector);
+		clickVisibleButtons(selector, skipCharts);
 	}
 
 	// Phase 2: sweep downward; clicking shrinks/grows row heights, so linger
@@ -725,7 +735,7 @@ async function sweepCodeBlockButtons(selector) {
 		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
 		if (atBottom) {
 			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
-			if (clickVisibleButtons(selector) === 0) {
+			if (clickVisibleButtons(selector, skipCharts) === 0) {
 				idlePasses++;
 			} else {
 				idlePasses = 0;
@@ -735,7 +745,7 @@ async function sweepCodeBlockButtons(selector) {
 			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + scroller.clientHeight);
 			steps++;
 			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
-			clickVisibleButtons(selector);
+			clickVisibleButtons(selector, skipCharts);
 		}
 	}
 
@@ -771,7 +781,7 @@ const stickyCollapseObserver = new MutationObserver(() => {
 	stickyCollapseTimer = setTimeout(() => {
 		stickyCollapseTimer = null;
 		if (collapseMode !== 'on' || collapseSweepActive) return;
-		clickVisibleButtons(CONSTANTS.COLLAPSE_BUTTON_SELECTOR);
+		clickVisibleButtons(CONSTANTS.COLLAPSE_BUTTON_SELECTOR, true);
 	}, 150);
 });
 stickyCollapseObserver.observe(document.body, { childList: true, subtree: true });
@@ -992,11 +1002,14 @@ function createSectionToggleButton(container) {
 		if (collapseSweepActive) return;
 		const turningOn = collapseMode !== 'on';
 		collapseMode = turningOn ? 'on' : 'off';
+		const selector = turningOn ? CONSTANTS.COLLAPSE_BUTTON_SELECTOR : CONSTANTS.EXPAND_BUTTON_SELECTOR;
 		collapseSweepActive = true;
-		sweepCodeBlockButtons(turningOn ? CONSTANTS.COLLAPSE_BUTTON_SELECTOR : CONSTANTS.EXPAND_BUTTON_SELECTOR)
-			.finally(() => {
-				collapseSweepActive = false;
-			});
+		sweepCodeBlockButtons(selector).finally(() => {
+			collapseSweepActive = false;
+			// Catch blocks that remounted behind the sweep's back; skipped for
+			// chart blocks when collapsing, included when expanding.
+			clickVisibleButtons(selector, turningOn);
+		});
 	});
 
 	// Insert after PromptList button or at end
