@@ -24,3 +24,4 @@ $RECYCLE.BIN/
 
 # Package output
 *.zip
+.playwright-cli/
