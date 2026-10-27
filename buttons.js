@@ -1,7 +1,12 @@
 // PromptList Extension for grok.com
 // This script adds a "PromptList" button and a "Section Toggle" button to the chat and project interfaces on https://grok.com/chat/* and https://grok.com/project/*
 // When clicked, the PromptList button shows a dropdown with previews of user messages, allowing navigation to each message.
-// The Section Toggle button collapses all sections in the conversation.
+// The Section Toggle button toggles all code blocks: first click sweeps the conversation and collapses
+// every code block (staying collapsed as the virtualizer remounts rows while you scroll); clicking again
+// expands them all back.
+// Supports grok.com's virtualized transcript ("plane rows"): conversation history is lazy-loaded and
+// rows are absolutely positioned, so the DOM only ever holds a window of messages. Both features sweep
+// the transcript scroll container to reach messages that are not currently mounted.
 
 console.log('[Stream] PromptList extension loaded');
 
@@ -26,6 +31,12 @@ const CONSTANTS = {
 	CHAT_CONTAINER_SELECTOR_TOKEN: 'div[class~="overflow-y-auto"][class~="overflow-x-hidden"]',
 	CHAT_CONTAINER_SELECTOR_FALLBACK: 'div[class~="overflow-y-auto"]',
 
+	// Selectors - semantic test ids (stable hooks in the virtualized transcript DOM)
+	USER_MESSAGES_SELECTOR_TESTID: '[data-testid="user-message"]',
+	ASSISTANT_MESSAGES_SELECTOR_TESTID: '[data-testid="assistant-message"]',
+	CHAT_CONTAINER_SELECTOR_TESTID: '[data-testid="chat-transcript-scroller"]',
+	PLANE_ROW_SELECTOR: '[data-plane-row]',
+
 	// Native nav button anchors (aria-label based) used as primary container strategy
 	NAV_FILES_BUTTON_SELECTOR: 'button[aria-label="Files"]',
 	NAV_MORE_BUTTON_SELECTOR: 'button[aria-label="More"]',
@@ -40,6 +51,7 @@ const CONSTANTS = {
 
 	// Stable selectors (unchanged)
 	COLLAPSE_BUTTON_SELECTOR: 'button[aria-label="Collapse"]',
+	EXPAND_BUTTON_SELECTOR: 'button[aria-label="Expand"]',
 
 	// Button IDs
 	PROMPT_LIST_BUTTON_ID: 'prompt-list-button',
@@ -83,6 +95,12 @@ const CONSTANTS = {
 	PROMPT_LIST_TOOLTIP: 'View your prompts',
 	COLLAPSE_TOOLTIP: 'Collapse code block',
 	ANSWER_TOOLTIP: 'Jump to answer',
+	HARVEST_STATUS_TEXT: 'Loading conversation…',
+
+	// Transcript sweep tuning (virtualized lazy-loaded history)
+	SWEEP_STEP_DELAY_MS: 200,
+	SWEEP_MAX_STEPS: 160,
+	JUMP_SETTLE_MS: 400,
 
 // Answer icon SVG
 	ANSWER_ICON_SVG: `
@@ -109,16 +127,30 @@ function isInTopNav(el) {
 }
 
 /**
+ * Checks whether an element lives inside the chat transcript scroller.
+ * The virtualized transcript positions message rows with top-0/inset-x-0 tokens,
+ * which defeats nav-root validation; anything inside the transcript is never a
+ * valid button container.
+ * @param {HTMLElement} el - The candidate element.
+ * @returns {boolean} True if the element is within the transcript scroller.
+ */
+function isInTranscript(el) {
+	if (!el) return false;
+	return el.closest(CONSTANTS.CHAT_CONTAINER_SELECTOR_TESTID) !== null;
+}
+
+/**
  * Validates a candidate button container.
- * Rejects detached, hidden, or zero-size elements and containers that are neither
- * in the top nav nor the project header group (e.g. artifact panel toolbars that
- * embed their own "Files" button).
+ * Rejects detached, hidden, or zero-size elements, containers inside the chat
+ * transcript, and containers that are neither in the top nav nor the project
+ * header group (e.g. artifact panel toolbars that embed their own "Files" button).
  * @param {HTMLElement} el - The candidate container.
  * @returns {{ok: boolean, reason: string}} Validation result with rejection reason.
  */
 function validateButtonContainer(el) {
 	if (!el) return { ok: false, reason: 'no match' };
 	if (!el.isConnected) return { ok: false, reason: 'disconnected' };
+	if (isInTranscript(el)) return { ok: false, reason: 'inside transcript scroller' };
 	const rect = el.getBoundingClientRect();
 	if (rect.width === 0 && rect.height === 0) return { ok: false, reason: 'zero-size' };
 	if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) {
@@ -189,26 +221,45 @@ function resolveButtonContainer() {
 }
 
 /**
- * Resolves all user message bubbles in the chat body.
- * Strategies: legacy selector, token-based items-end ancestor match, then
- * all .message-bubble filtered to items-end ancestors.
- * @returns {NodeListOf<HTMLElement>|HTMLElement[]} The user message elements.
+ * Resolves all user message bubbles currently mounted in the DOM.
+ * Strategies: semantic test id, legacy selector, token-based items-end ancestor
+ * match, then all .message-bubble filtered to items-end ancestors.
+ * Note: with the virtualized transcript this only sees mounted messages; use
+ * harvestConversation() for the full history.
+ * @returns {HTMLElement[]} The user message elements.
  */
 function resolveUserMessages() {
-	let msgs = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR_LEGACY);
-	if (msgs.length) return msgs;
+	let msgs = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR_TESTID);
+	if (msgs.length) return Array.from(msgs);
+
+	msgs = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR_LEGACY);
+	if (msgs.length) return Array.from(msgs);
 
 	msgs = document.querySelectorAll(CONSTANTS.USER_MESSAGES_SELECTOR_TOKEN);
-	if (msgs.length) return msgs;
+	if (msgs.length) return Array.from(msgs);
 
 	msgs = document.querySelectorAll('.message-bubble');
 	return Array.from(msgs).filter(msg => msg.closest('[class~="items-end"]'));
 }
 
 /**
+ * Resolves all assistant message bubbles currently mounted in the DOM.
+ * Used to pair "jump to answer" targets with user messages by position.
+ * @returns {HTMLElement[]} The assistant message elements.
+ */
+function resolveAssistantMessages() {
+	let msgs = document.querySelectorAll(CONSTANTS.ASSISTANT_MESSAGES_SELECTOR_TESTID);
+	if (msgs.length) return Array.from(msgs);
+
+	msgs = document.querySelectorAll('.message-bubble');
+	return Array.from(msgs).filter(msg => msg.closest('[class~="items-start"]'));
+}
+
+/**
  * Resolves the scrollable chat container.
- * Strategies: legacy selector (trusted), token-based overflow match, then any
- * overflow-y-auto div - the latter two validated by containing a .message-bubble.
+ * Strategies: legacy selector (trusted), semantic test id, token-based overflow
+ * match, then any overflow-y-auto div - the latter two validated by containing a
+ * .message-bubble.
  * Returns null when no validated container is found so callers can fall back to
  * scrollIntoView rather than scrolling the wrong element.
  * @returns {HTMLElement|null} The chat scroll container, or null.
@@ -216,6 +267,9 @@ function resolveUserMessages() {
 function resolveChatContainer() {
 	const legacy = document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR_LEGACY);
 	if (legacy) return legacy;
+
+	const testid = document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR_TESTID);
+	if (testid) return testid;
 
 	const candidates = [
 		document.querySelector(CONSTANTS.CHAT_CONTAINER_SELECTOR_TOKEN),
@@ -244,6 +298,66 @@ function getPreview(text, charCount = 100) {
 }
 
 /**
+ * Extracts the visible message text for previews, excluding the screen-reader
+ * author heading ("You" / "Grok") and interactive chrome (code-block headers
+ * with language label / Copy buttons) that grok.com embeds inside bubbles.
+ * @param {HTMLElement} msg - The message bubble element.
+ * @returns {string} The visible message text.
+ */
+function getMessagePreviewText(msg) {
+	const source = msg.querySelector('.response-content-markdown') || msg;
+	const clone = source.cloneNode(true);
+	clone.querySelectorAll('h2[data-no-copy], .sr-only, button, .not-prose').forEach(el => el.remove());
+	return clone.textContent;
+}
+
+/**
+ * Resolves the virtualized plane row that hosts a message, if any.
+ * @param {HTMLElement} msg - The message bubble element.
+ * @returns {HTMLElement|null} The plane row element, or null on the legacy DOM.
+ */
+function getMessageRow(msg) {
+	return msg.closest(CONSTANTS.PLANE_ROW_SELECTOR);
+}
+
+/**
+ * Resolves a message's Y coordinate in transcript content space.
+ * Prefers the plane row's translateY (stable even when the row is far outside
+ * the viewport), falling back to the element's rendered position.
+ * @param {HTMLElement} msg - The message bubble element.
+ * @returns {number} The content-space Y coordinate of the message.
+ */
+function getMessageContentY(msg) {
+	const row = getMessageRow(msg);
+	if (row) {
+		const match = (row.style.transform || '').match(/translateY\((-?[\d.]+)px\)/);
+		if (match) return parseFloat(match[1]);
+	}
+	const container = resolveChatContainer();
+	const containerTop = container ? container.getBoundingClientRect().top : 0;
+	const scrollTop = container ? container.scrollTop : window.scrollY;
+	return msg.getBoundingClientRect().top - containerTop + scrollTop;
+}
+
+/**
+ * Resolves a stable identity for a message across virtualizer mount/unmount
+ * cycles. Prefers the plane row gateway id, then the turn heading id, then the
+ * message text.
+ * @param {HTMLElement} msg - The message bubble element.
+ * @returns {string} The message identity key.
+ */
+function getMessageKey(msg) {
+	const row = getMessageRow(msg);
+	const rowId = row && row.getAttribute('data-plane-row');
+	if (rowId) return rowId;
+
+	const heading = msg.querySelector('h2[id^="turn-heading"]');
+	if (heading && heading.id) return heading.id;
+
+	return 'text:' + getPreview(msg.textContent, 120);
+}
+
+/**
  * Scrolls to an element within its scrollable container with an offset.
  * Falls back to scrollIntoView if the container selector fails (e.g., due to class changes).
  * @param {HTMLElement} element - The element to scroll to.
@@ -267,7 +381,66 @@ function scrollToElementWithOffset(element, offset = 50) {
 }
 
 /**
- * Finds the corresponding response element for a given user message.
+ * Finds the currently mounted message whose content Y is closest to the target.
+ * Used to fine-tune jumps after the virtualizer has (re)mounted the target row.
+ * @param {number} y - The target content-space Y coordinate.
+ * @returns {{el: HTMLElement, y: number}|null} The nearest message, or null.
+ */
+function findMessageNearY(y) {
+	const candidates = [...resolveUserMessages(), ...resolveAssistantMessages()];
+	let best = null;
+	for (const el of candidates) {
+		const currentY = getMessageContentY(el);
+		if (!best || Math.abs(currentY - y) < Math.abs(best.y - y)) {
+			best = { el, y: currentY };
+		}
+	}
+	return best;
+}
+
+/**
+ * Jumps the transcript to a content-space Y coordinate so the target sits
+ * `offset` pixels from the top of the scroll container. Because the virtualizer
+ * mounts rows asynchronously, a second correction pass runs after a short wait.
+ * Falls back to the element (legacy DOM) or window scroll when needed.
+ * @param {number|null} y - The target content-space Y coordinate.
+ * @param {number} offset - The offset in pixels from the top.
+ * @param {HTMLElement|null} [fallbackEl] - Element to scroll to on the legacy DOM.
+ */
+function jumpToContentY(y, offset, fallbackEl = null) {
+	const container = resolveChatContainer();
+	if (container && typeof y === 'number' && isFinite(y)) {
+		container.scrollTo({ top: Math.max(0, y - offset), behavior: 'auto' });
+		setTimeout(() => {
+			const nearest = findMessageNearY(y);
+			if (nearest && Math.abs(nearest.y - y) <= 600) {
+				container.scrollTo({ top: Math.max(0, nearest.y - offset), behavior: 'smooth' });
+			}
+		}, CONSTANTS.JUMP_SETTLE_MS);
+		return;
+	}
+	if (fallbackEl && fallbackEl.isConnected) {
+		scrollToElementWithOffset(fallbackEl, offset);
+		return;
+	}
+	if (typeof y === 'number' && isFinite(y)) {
+		window.scrollTo({ top: Math.max(0, y - offset), behavior: 'smooth' });
+	}
+}
+
+/**
+ * Waits for the given number of milliseconds.
+ * @param {number} ms - The delay in milliseconds.
+ * @returns {Promise<void>} Resolved after the delay.
+ */
+function settle(ms) {
+	return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Finds the corresponding response element for a given user message (legacy
+ * DOM pairing via sibling wrappers). Kept as a fallback when plane rows are
+ * unavailable for position-based pairing.
  * @param {HTMLElement} userMessage - The user message element.
  * @returns {HTMLElement|null} The response element or null if not found.
  */
@@ -297,7 +470,6 @@ function findCorrespondingResponse(userMessage) {
 	}
 	return null;
 }
-
 
 /**
  * Creates a generic tooltip setup for a button.
@@ -389,6 +561,189 @@ function createTooltip(button, content, wrapperId = null) {
 }
 
 /**
+ * Transcript sweep (virtualized history).
+ */
+
+/**
+ * Harvests the full conversation by sweeping the transcript scroller, since the
+ * virtualizer only mounts a window of plane rows at a time. Collects user and
+ * assistant messages at each step, deduplicating by message key, and pairs each
+ * user message with the next assistant message below it.
+ * @param {number} session - Active harvest session id; sweep aborts when it changes.
+ * @param {Function} [onProgress] - Called after each sweep step.
+ * @returns {Promise<Array<{key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}>>}
+ * The harvested user messages sorted by content Y.
+ */
+async function harvestConversation(session, onProgress = null) {
+	const scroller = resolveChatContainer();
+	const collected = new Map();
+	const assistantYs = new Set();
+
+	const collectVisible = () => {
+		for (const msg of resolveUserMessages()) {
+			const key = getMessageKey(msg);
+			if (!collected.has(key)) {
+				collected.set(key, {
+					key,
+					msg,
+					y: getMessageContentY(msg),
+					text: getPreview(getMessagePreviewText(msg)),
+					responseY: null,
+				});
+			} else {
+				// Refresh y in case row heights were re-measured.
+				collected.get(key).y = getMessageContentY(msg);
+			}
+		}
+		for (const msg of resolveAssistantMessages()) {
+			assistantYs.add(getMessageContentY(msg));
+		}
+	};
+
+	const finish = () => {
+		const entries = Array.from(collected.values()).sort((a, b) => a.y - b.y);
+		const sortedAssistantYs = Array.from(assistantYs).sort((a, b) => a - b);
+		for (const entry of entries) {
+			entry.responseY = sortedAssistantYs.find(y => y > entry.y + 1) ?? null;
+		}
+		return entries;
+	};
+
+	// Snapshot of everything harvested so far, for progressive dropdown renders.
+	const snapshot = () => Array.from(collected.values()).sort((a, b) => a.y - b.y);
+
+	collectVisible();
+	if (!scroller) return finish();
+
+	// Legacy (non-virtualized) DOM: everything is mounted already.
+	if (!document.querySelector(CONSTANTS.PLANE_ROW_SELECTOR)) return finish();
+
+	const originalBehavior = scroller.style.scrollBehavior;
+	scroller.style.scrollBehavior = 'auto';
+	const originalY = scroller.scrollTop;
+
+	// Phase 1: sweep upward to the top, mounting older turns.
+	let steps = 0;
+	while (scroller.scrollTop > 0 && steps < CONSTANTS.SWEEP_MAX_STEPS && session === harvestSession) {
+		scroller.scrollTop = Math.max(0, scroller.scrollTop - scroller.clientHeight);
+		steps++;
+		await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+		collectVisible();
+		if (onProgress) onProgress(snapshot());
+	}
+
+	// Phase 2: sweep downward to the bottom; linger while new content appears
+	// (row heights shift as turns load, so re-check until stable).
+	steps = 0;
+	let idlePasses = 0;
+	while (steps < CONSTANTS.SWEEP_MAX_STEPS && idlePasses < 3 && session === harvestSession) {
+		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+		if (atBottom) {
+			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+			const before = collected.size;
+			collectVisible();
+			if (collected.size === before) {
+				idlePasses++;
+			} else {
+				idlePasses = 0;
+				if (onProgress) onProgress(snapshot());
+			}
+		} else {
+			idlePasses = 0;
+			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + scroller.clientHeight);
+			steps++;
+			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+			collectVisible();
+			if (onProgress) onProgress(snapshot());
+		}
+	}
+
+	// Restore the reader's position.
+	scroller.scrollTop = Math.min(originalY, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
+	scroller.style.scrollBehavior = originalBehavior;
+
+	if (session !== harvestSession) return [];
+	return finish();
+}
+
+/**
+ * Clicks every visible button matching the selector.
+ * @param {string} selector - Button selector (Collapse or Expand).
+ * @returns {number} The number of buttons clicked.
+ */
+function clickVisibleButtons(selector) {
+	let count = 0;
+	document.querySelectorAll(selector).forEach(btn => {
+		if (btn.offsetParent !== null) {
+			btn.click();
+			count++;
+		}
+	});
+	return count;
+}
+
+/**
+ * Sweeps the transcript and clicks every visible Collapse/Expand button as rows
+ * mount, covering code blocks outside the currently mounted virtualizer window.
+ * Restores the original scroll position afterwards. Note: the virtualizer resets
+ * code block state when rows unmount/remount, so sweep results are made sticky
+ * by the observer below.
+ * @param {string} selector - Button selector to click ("Collapse" or "Expand").
+ * @returns {Promise<void>}
+ */
+async function sweepCodeBlockButtons(selector) {
+	// Legacy DOM (or nothing mounted): one pass over visible buttons suffices.
+	if (!document.querySelector(CONSTANTS.PLANE_ROW_SELECTOR)) {
+		clickVisibleButtons(selector);
+		return;
+	}
+
+	const scroller = resolveChatContainer();
+	if (!scroller) {
+		clickVisibleButtons(selector);
+		return;
+	}
+
+	const originalBehavior = scroller.style.scrollBehavior;
+	scroller.style.scrollBehavior = 'auto';
+	const originalY = scroller.scrollTop;
+
+	// Phase 1: sweep upward to the top, clicking as rows mount.
+	let steps = 0;
+	while (scroller.scrollTop > 0 && steps < CONSTANTS.SWEEP_MAX_STEPS) {
+		scroller.scrollTop = Math.max(0, scroller.scrollTop - scroller.clientHeight);
+		steps++;
+		await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+		clickVisibleButtons(selector);
+	}
+
+	// Phase 2: sweep downward; clicking shrinks/grows row heights, so linger
+	// until a full pass at the bottom finds nothing left to click.
+	steps = 0;
+	let idlePasses = 0;
+	while (steps < CONSTANTS.SWEEP_MAX_STEPS && idlePasses < 3) {
+		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+		if (atBottom) {
+			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+			if (clickVisibleButtons(selector) === 0) {
+				idlePasses++;
+			} else {
+				idlePasses = 0;
+			}
+		} else {
+			idlePasses = 0;
+			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + scroller.clientHeight);
+			steps++;
+			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+			clickVisibleButtons(selector);
+		}
+	}
+
+	scroller.scrollTop = Math.min(originalY, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
+	scroller.style.scrollBehavior = originalBehavior;
+}
+
+/**
  * Dropdown management.
  */
 const dropdown = document.createElement('div');
@@ -398,98 +753,58 @@ dropdown.style.position = 'absolute';
 dropdown.style.display = 'none';
 document.body.appendChild(dropdown);
 
+// Session token for the harvest: any close/cancel/re-open invalidates the sweep.
+let harvestSession = 0;
+// Collapse mode: 'on' keeps every code block collapsed as rows mount/remount.
+let collapseMode = 'off';
+// Re-entrancy guard for the collapse sweep.
+let collapseSweepActive = false;
+// Debounce timer for the sticky collapse observer.
+let stickyCollapseTimer = null;
+
+// Sticky collapse: the virtualizer resets code blocks to expanded when their row
+// unmounts/remounts during scrolling, so keep re-collapsing newly mounted blocks
+// while collapse mode is on.
+const stickyCollapseObserver = new MutationObserver(() => {
+	if (collapseMode !== 'on' || collapseSweepActive) return;
+	if (stickyCollapseTimer) return;
+	stickyCollapseTimer = setTimeout(() => {
+		stickyCollapseTimer = null;
+		if (collapseMode !== 'on' || collapseSweepActive) return;
+		clickVisibleButtons(CONSTANTS.COLLAPSE_BUTTON_SELECTOR);
+	}, 150);
+});
+stickyCollapseObserver.observe(document.body, { childList: true, subtree: true });
+
 // Stop propagation on dropdown clicks
 dropdown.addEventListener('click', (e) => e.stopPropagation());
 
 // Document click listener to close dropdown
 document.addEventListener('click', (e) => {
 	if (dropdown.style.display === 'block' && !dropdown.contains(e.target)) {
-		dropdown.style.display = 'none';
+		hideDropdown();
 	}
 });
 
 /**
- * Toggles the dropdown visibility and populates with user message previews.
- * @param {HTMLElement} button - The button that triggered the toggle.
+ * Hides the dropdown and cancels any in-flight harvest sweep.
  */
-function toggleDropdown(button) {
-	if (dropdown.style.display === 'block') {
-		dropdown.style.display = 'none';
-		return;
-	}
+function hideDropdown() {
+	harvestSession++;
+	dropdown.style.display = 'none';
+}
 
-	const userMessages = resolveUserMessages();
-	dropdown.innerHTML = '';
-
-	userMessages.forEach((msg) => {
-		const preview = getPreview(msg.textContent);
-		const response = findCorrespondingResponse(msg);
-
-		const item = document.createElement('div');
-		item.className = CONSTANTS.DROPDOWN_ITEM_CLASSES;
-		item.style.display = 'flex';
-		item.style.justifyContent = 'space-between';
-		item.style.alignItems = 'center';
-
-		const previewSpan = document.createElement('span');
-		previewSpan.textContent = preview;
-		previewSpan.style.width = '190px';
-		previewSpan.style.whiteSpace = 'nowrap';
-		previewSpan.style.overflow = 'hidden';
-		previewSpan.style.WebkitMaskImage = 'linear-gradient(to right, black 170px, transparent 190px)';
-		previewSpan.style.maskImage = 'linear-gradient(to right, black 170px, transparent 190px)';
-
-		if (response) {
-			const answerButton = document.createElement('button');
-			answerButton.innerHTML = CONSTANTS.ANSWER_ICON_SVG;
-			answerButton.style.background = 'none';
-			answerButton.style.border = 'none';
-			answerButton.style.cursor = 'pointer';
-			answerButton.style.padding = '0';
-			answerButton.style.marginLeft = '8px';
-			answerButton.style.display = 'flex';
-			answerButton.style.alignItems = 'center';
-			answerButton.style.opacity = '0.6';
-			answerButton.setAttribute('aria-label', CONSTANTS.ANSWER_TOOLTIP);
-			answerButton.setAttribute('title', CONSTANTS.ANSWER_TOOLTIP);
-			answerButton.type = 'button';
-
-			answerButton.addEventListener('mouseenter', () => {
-				answerButton.style.opacity = '1';
-			});
-			answerButton.addEventListener('mouseleave', () => {
-				answerButton.style.opacity = '0.6';
-			});
-
-			answerButton.addEventListener('click', (e) => {
-				e.stopPropagation();
-				const offset = Math.round(window.innerHeight * 0.05);
-				scrollToElementWithOffset(response, offset);
-				dropdown.style.display = 'none';
-			});
-
-			item.appendChild(previewSpan);
-			item.appendChild(answerButton);
-		} else {
-			item.appendChild(previewSpan);
-		}
-
-		item.addEventListener('click', () => {
-			const offset = Math.round(window.innerHeight * 0.05);
-			scrollToElementWithOffset(msg, offset);
-			dropdown.style.display = 'none';
-		});
-
-		dropdown.appendChild(item);
-	});
-
+/**
+ * Positions the dropdown below the trigger button, flipping left when there is
+ * not enough room on the right, and centering on mobile.
+ * @param {HTMLElement} button - The button that opened the dropdown.
+ */
+function positionDropdown(button) {
 	const buttonRect = button.getBoundingClientRect();
 	dropdown.style.top = `${buttonRect.bottom + window.scrollY}px`;
 	dropdown.style.left = `${buttonRect.left + window.scrollX}px`;
-dropdown.style.display = 'block';
-	
+
 	const dropdownRect = dropdown.getBoundingClientRect();
-	
 	const isMobile = window.innerWidth < 640 || 'ontouchstart' in window;
 
 	if (isMobile) {
@@ -500,6 +815,124 @@ dropdown.style.display = 'block';
 			dropdown.style.left = `${buttonRect.right + window.scrollX - dropdownRect.width}px`;
 		}
 	}
+}
+
+/**
+ * Builds one dropdown item for a harvested user message.
+ * @param {{key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}} entry - The harvested message.
+ * @returns {HTMLElement} The dropdown item element.
+ */
+function createDropdownItem(entry) {
+	const item = document.createElement('div');
+	item.className = CONSTANTS.DROPDOWN_ITEM_CLASSES;
+	item.style.display = 'flex';
+	item.style.justifyContent = 'space-between';
+	item.style.alignItems = 'center';
+
+	const previewSpan = document.createElement('span');
+	previewSpan.textContent = entry.text;
+	previewSpan.style.width = '190px';
+	previewSpan.style.whiteSpace = 'nowrap';
+	previewSpan.style.overflow = 'hidden';
+	previewSpan.style.WebkitMaskImage = 'linear-gradient(to right, black 170px, transparent 190px)';
+	previewSpan.style.maskImage = 'linear-gradient(to right, black 170px, transparent 190px)';
+	item.appendChild(previewSpan);
+
+	if (entry.responseY !== null) {
+		const answerButton = document.createElement('button');
+		answerButton.innerHTML = CONSTANTS.ANSWER_ICON_SVG;
+		answerButton.style.background = 'none';
+		answerButton.style.border = 'none';
+		answerButton.style.cursor = 'pointer';
+		answerButton.style.padding = '0';
+		answerButton.style.marginLeft = '8px';
+		answerButton.style.display = 'flex';
+		answerButton.style.alignItems = 'center';
+		answerButton.style.opacity = '0.6';
+		answerButton.setAttribute('aria-label', CONSTANTS.ANSWER_TOOLTIP);
+		answerButton.setAttribute('title', CONSTANTS.ANSWER_TOOLTIP);
+		answerButton.type = 'button';
+
+		answerButton.addEventListener('mouseenter', () => {
+			answerButton.style.opacity = '1';
+		});
+		answerButton.addEventListener('mouseleave', () => {
+			answerButton.style.opacity = '0.6';
+		});
+
+		answerButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			hideDropdown();
+			const offset = Math.round(window.innerHeight * 0.05);
+			jumpToContentY(entry.responseY, offset, findCorrespondingResponse(entry.msg));
+		});
+
+		item.appendChild(answerButton);
+	}
+
+	item.addEventListener('click', () => {
+		hideDropdown();
+		const offset = Math.round(window.innerHeight * 0.05);
+		jumpToContentY(entry.y, offset, entry.msg);
+	});
+
+	return item;
+}
+
+/**
+ * (Re)renders the dropdown contents from the harvested entries, optionally with
+ * a progress status row while the sweep is still running.
+ * @param {HTMLElement} button - The button that opened the dropdown.
+ * @param {Array<{key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}>} entries - Harvested messages.
+ * @param {string|null} statusText - Optional status line shown below the items.
+ */
+function renderDropdown(button, entries, statusText = null) {
+	dropdown.innerHTML = '';
+
+	for (const entry of entries) {
+		dropdown.appendChild(createDropdownItem(entry));
+	}
+
+	if (statusText) {
+		const status = document.createElement('div');
+		status.className = CONSTANTS.DROPDOWN_ITEM_CLASSES;
+		status.style.display = 'flex';
+		status.style.justifyContent = 'center';
+		status.style.color = 'var(--fg-secondary, rgba(0,0,0,0.5))';
+		status.style.cursor = 'default';
+		status.textContent = `${statusText} (${entries.length})`;
+		dropdown.appendChild(status);
+	}
+
+	if (dropdown.style.display !== 'block') {
+		dropdown.style.display = 'block';
+	}
+	positionDropdown(button);
+}
+
+/**
+ * Toggles the dropdown visibility. On open, harvests the full (lazy-loaded)
+ * conversation, rendering partial results while the sweep is in flight.
+ * @param {HTMLElement} button - The button that triggered the toggle.
+ */
+async function toggleDropdown(button) {
+	if (dropdown.style.display === 'block') {
+		hideDropdown();
+		return;
+	}
+
+	const session = ++harvestSession;
+	renderDropdown(button, [], CONSTANTS.HARVEST_STATUS_TEXT);
+
+	const entries = await harvestConversation(session, (partialEntries) => {
+		// Progressive updates: re-render whatever has been harvested so far.
+		if (session !== harvestSession) return;
+		renderDropdown(button, partialEntries, CONSTANTS.HARVEST_STATUS_TEXT);
+	});
+
+	if (session !== harvestSession) return;
+
+	renderDropdown(button, entries, entries.length ? null : 'No messages found');
 }
 
 /**
@@ -556,10 +989,14 @@ function createSectionToggleButton(container) {
 		tooltipDiv.setAttribute('data-state', 'closed');
 		popperWrapper.style.display = 'none';
 
-		// Always collapse all open sections
-		document.querySelectorAll(CONSTANTS.COLLAPSE_BUTTON_SELECTOR).forEach(btn => {
-			if (btn.offsetParent !== null) btn.click();
-		});
+		if (collapseSweepActive) return;
+		const turningOn = collapseMode !== 'on';
+		collapseMode = turningOn ? 'on' : 'off';
+		collapseSweepActive = true;
+		sweepCodeBlockButtons(turningOn ? CONSTANTS.COLLAPSE_BUTTON_SELECTOR : CONSTANTS.EXPAND_BUTTON_SELECTOR)
+			.finally(() => {
+				collapseSweepActive = false;
+			});
 	});
 
 	// Insert after PromptList button or at end
@@ -660,6 +1097,9 @@ function handleUrlChange() {
 	if (newUrl !== currentUrl) {
 		console.log('[Stream] PromptList URL changed from', currentUrl, 'to', newUrl);
 		currentUrl = newUrl;
+		harvestSession++;
+		collapseMode = 'off';
+		collapseSweepActive = false;
 		addButtons();
 		resetSectionToggleToCollapse();
 	}
