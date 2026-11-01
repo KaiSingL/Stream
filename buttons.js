@@ -102,8 +102,10 @@ const CONSTANTS = {
 	HARVEST_STATUS_TEXT: 'Loading conversation…',
 
 	// Transcript sweep tuning (virtualized lazy-loaded history)
-	SWEEP_STEP_DELAY_MS: 200,
+	SWEEP_STEP_DELAY_MS: 80,
 	SWEEP_MAX_STEPS: 160,
+	// One jump covers roughly the virtualizer's fixed mounting window (~8 viewports).
+	SWEEP_JUMP_VIEWPORTS: 8,
 	JUMP_SETTLE_MS: 400,
 
 // Answer icon SVG
@@ -565,21 +567,30 @@ function createTooltip(button, content, wrapperId = null) {
 }
 
 /**
+ * Resolves the current chat id from the URL (/chat/<id>, /c/<id>, or ?chat=<id>).
+ * @returns {string|null} The chat id, or null when not determinable.
+ */
+function getChatId() {
+	try {
+		const url = new URL(window.location.href);
+		const fromQuery = url.searchParams.get('chat');
+		if (fromQuery) return fromQuery;
+		const match = url.pathname.match(/\/(?:chat|c)\/([0-9a-f-]{8,})/i);
+		return match ? match[1] : null;
+	} catch (e) {
+		return null;
+	}
+}
+
+/**
  * Transcript sweep (virtualized history).
  */
 
 /**
- * Harvests the full conversation by sweeping the transcript scroller, since the
- * virtualizer only mounts a window of plane rows at a time. Collects user and
- * assistant messages at each step, deduplicating by message key, and pairs each
- * user message with the next assistant message below it.
- * @param {number} session - Active harvest session id; sweep aborts when it changes.
- * @param {Function} [onProgress] - Called after each sweep step.
- * @returns {Promise<Array<{key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}>>}
- * The harvested user messages sorted by content Y.
+ * Collects the currently mounted user/assistant messages and their state.
+ * @returns {{collected: Map<string, {key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}>, assistantYs: Set<number>, collectVisible: Function}} State with a collectVisible() rescan.
  */
-async function harvestConversation(session, onProgress = null) {
-	const scroller = resolveChatContainer();
+function collectMountedState() {
 	const collected = new Map();
 	const assistantYs = new Set();
 
@@ -604,32 +615,169 @@ async function harvestConversation(session, onProgress = null) {
 		}
 	};
 
-	const finish = () => {
-		const entries = Array.from(collected.values()).sort((a, b) => a.y - b.y);
-		const sortedAssistantYs = Array.from(assistantYs).sort((a, b) => a - b);
-		for (const entry of entries) {
-			entry.responseY = sortedAssistantYs.find(y => y > entry.y + 1) ?? null;
-		}
-		return entries;
-	};
+	collectVisible();
+	return { collected, assistantYs, collectVisible };
+}
 
-	// Snapshot of everything harvested so far, for progressive dropdown renders.
+/**
+ * Pairs each entry with the next assistant message below it.
+ * @param {Map<string, {key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}>} collected - Mounted entries.
+ * @param {Set<number>} assistantYs - Assistant content Y positions.
+ * @returns {Array<{key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}>} Entries sorted by content Y.
+ */
+function finalizeEntries(collected, assistantYs) {
+	const entries = Array.from(collected.values()).sort((a, b) => a.y - b.y);
+	const sortedAssistantYs = Array.from(assistantYs).sort((a, b) => a - b);
+	for (const entry of entries) {
+		entry.responseY = sortedAssistantYs.find(y => y > entry.y + 1) ?? null;
+	}
+	return entries;
+}
+
+/**
+ * Builds dropdown entries from the transcript tap cache, matching cached items
+ * to mounted DOM rows (by turn id, then normalized text) so mounted messages
+ * carry jump positions. Cache-only items have null y/msg and are located
+ * lazily on click.
+ * @param {Array<{id: string, role: string, text: string, seq: number}>} cachedItems - Cached user items in conversation order.
+ * @param {Map<string, {key: string, msg: HTMLElement, y: number, text: string, responseY: number|null}>} collected - Mounted entries by key.
+ * @returns {Array<{key: string, msg: HTMLElement|null, y: number|null, text: string, responseY: number|null}>} Entries in conversation order.
+ */
+function buildEntriesFromCache(cachedItems, collected) {
+	const byTurnId = new Map();
+	const byText = [];
+	for (const entry of collected.values()) {
+		const labelledBy = entry.msg && entry.msg.getAttribute('aria-labelledby');
+		if (labelledBy) byTurnId.set(labelledBy.replace(/^turn-heading-/, ''), entry);
+		byText.push([entry.text.replace(/\s+/g, ''), entry]);
+	}
+	const findMounted = (item) => {
+		const exact = byTurnId.get(item.id);
+		if (exact) return exact;
+		const needle = item.text.replace(/\s+/g, '').slice(0, 40);
+		if (!needle) return null;
+		for (const [key, entry] of byText) {
+			if (key.indexOf(needle) !== -1 || needle.indexOf(key) !== -1) return entry;
+		}
+		return null;
+	};
+	return cachedItems.map((item) => {
+		const mounted = findMounted(item);
+		return {
+			key: 'tap:' + item.id,
+			msg: mounted ? mounted.msg : null,
+			y: mounted ? mounted.y : null,
+			text: getPreview(item.text),
+			responseY: mounted ? mounted.responseY : null,
+			seq: item.seq,
+		};
+	});
+}
+
+/**
+ * Locates a message's content Y by sweeping the transcript and matching
+ * normalized text. The scroller is hidden during the sweep so the user never
+ * sees the jump-scanning.
+ * @param {string} text - The message text to find.
+ * @returns {Promise<number|null>} The content-space Y, or null when not found.
+ */
+async function locateMessageYBySweep(text) {
+	const scroller = resolveChatContainer();
+	if (!scroller) return null;
+	const norm = (s) => String(s || '').replace(/\s+/g, '').slice(0, 40);
+	const needle = norm(text);
+	if (!needle) return null;
+	const originalBehavior = scroller.style.scrollBehavior;
+	const originalVisibility = scroller.style.visibility;
+	const originalY = scroller.scrollTop;
+	scroller.style.scrollBehavior = 'auto';
+	scroller.style.visibility = 'hidden';
+	const scan = () => {
+		for (const msg of resolveUserMessages()) {
+			if (norm(getMessagePreviewText(msg)).indexOf(needle) !== -1) {
+				return getMessageContentY(msg);
+			}
+		}
+		return null;
+	};
+	let found = scan();
+	const jumpPx = scroller.clientHeight * CONSTANTS.SWEEP_JUMP_VIEWPORTS;
+	let steps = 0;
+	while (found === null && scroller.scrollTop > 0 && steps < CONSTANTS.SWEEP_MAX_STEPS) {
+		scroller.scrollTop = Math.max(0, scroller.scrollTop - jumpPx);
+		steps++;
+		await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+		found = scan();
+	}
+	steps = 0;
+	let idlePasses = 0;
+	while (found === null && steps < CONSTANTS.SWEEP_MAX_STEPS && idlePasses < 3) {
+		const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+		if (atBottom) {
+			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+			found = scan();
+			if (found === null) idlePasses++;
+			steps++;
+		} else {
+			idlePasses = 0;
+			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + jumpPx);
+			steps++;
+			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
+			found = scan();
+		}
+	}
+	scroller.scrollTop = Math.min(originalY, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
+	scroller.style.scrollBehavior = originalBehavior;
+	scroller.style.visibility = originalVisibility;
+	return found;
+}
+
+/**
+ * Harvests the full conversation for the prompt list. Fast path: the
+ * transcript tap streams the whole conversation over the realtime gateway at
+ * page load, so the cache already holds every message and no scrolling is
+ * needed — mounted rows contribute jump positions. Fallback: sweep the
+ * transcript scroller to force the virtualizer to mount everything, collecting
+ * messages at each step.
+ * @param {number} session - Active harvest session id; sweep aborts when it changes.
+ * @param {Function} [onProgress] - Called after each sweep step.
+ * @returns {Promise<Array<{key: string, msg: HTMLElement|null, y: number|null, text: string, responseY: number|null}>>}
+ * The harvested user messages in conversation order.
+ */
+async function harvestConversation(session, onProgress = null) {
+	const scroller = resolveChatContainer();
+	const { collected, assistantYs, collectVisible } = collectMountedState();
+
+	const finish = () => finalizeEntries(collected, assistantYs);
 	const snapshot = () => Array.from(collected.values()).sort((a, b) => a.y - b.y);
 
+	const cachedItems = window.__streamTranscriptTap ? window.__streamTranscriptTap.getCachedItems(getChatId()) : [];
 	collectVisible();
+
+	// Fast path: the tap cache covers at least everything mounted, so it holds
+	// the complete conversation — render it straight away, no sweep.
+	if (cachedItems.length && cachedItems.length >= collected.size) {
+		if (session !== harvestSession) return [];
+		return buildEntriesFromCache(cachedItems, collected);
+	}
+
 	if (!scroller) return finish();
 
 	// Legacy (non-virtualized) DOM: everything is mounted already.
 	if (!document.querySelector(CONSTANTS.PLANE_ROW_SELECTOR)) return finish();
 
 	const originalBehavior = scroller.style.scrollBehavior;
+	const originalVisibility = scroller.style.visibility;
 	scroller.style.scrollBehavior = 'auto';
+	// Hide the transcript so the user never sees the sweep jump-scanning.
+	scroller.style.visibility = 'hidden';
 	const originalY = scroller.scrollTop;
+	const jumpPx = scroller.clientHeight * CONSTANTS.SWEEP_JUMP_VIEWPORTS;
 
 	// Phase 1: sweep upward to the top, mounting older turns.
 	let steps = 0;
 	while (scroller.scrollTop > 0 && steps < CONSTANTS.SWEEP_MAX_STEPS && session === harvestSession) {
-		scroller.scrollTop = Math.max(0, scroller.scrollTop - scroller.clientHeight);
+		scroller.scrollTop = Math.max(0, scroller.scrollTop - jumpPx);
 		steps++;
 		await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
 		collectVisible();
@@ -654,7 +802,7 @@ async function harvestConversation(session, onProgress = null) {
 			}
 		} else {
 			idlePasses = 0;
-			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + scroller.clientHeight);
+			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + jumpPx);
 			steps++;
 			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
 			collectVisible();
@@ -662,12 +810,25 @@ async function harvestConversation(session, onProgress = null) {
 		}
 	}
 
-	// Restore the reader's position.
+	// Restore the reader's position and visibility.
 	scroller.scrollTop = Math.min(originalY, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
 	scroller.style.scrollBehavior = originalBehavior;
+	scroller.style.visibility = originalVisibility;
 
 	if (session !== harvestSession) return [];
-	return finish();
+
+	// Merge tap-cached items the sweep never managed to mount (no position;
+	// they are located lazily on click), then order: positioned by Y, the rest
+	// appended in conversation order.
+	const entries = finish();
+	if (cachedItems.length) {
+		const present = new Set(entries.map((e) => e.key));
+		const cacheOnly = buildEntriesFromCache(cachedItems, collected).filter((e) => !present.has(e.key));
+		const positioned = entries.filter((e) => typeof e.y === 'number' && isFinite(e.y));
+		const unpositioned = entries.filter((e) => !(typeof e.y === 'number' && isFinite(e.y)));
+		return positioned.concat(unpositioned, cacheOnly);
+	}
+	return entries;
 }
 
 /**
@@ -715,13 +876,17 @@ async function sweepCodeBlockButtons(selector) {
 	}
 
 	const originalBehavior = scroller.style.scrollBehavior;
+	const originalVisibility = scroller.style.visibility;
 	scroller.style.scrollBehavior = 'auto';
+	// Hide the transcript so the user never sees the sweep jump-scanning.
+	scroller.style.visibility = 'hidden';
 	const originalY = scroller.scrollTop;
+	const jumpPx = scroller.clientHeight * CONSTANTS.SWEEP_JUMP_VIEWPORTS;
 
 	// Phase 1: sweep upward to the top, clicking as rows mount.
 	let steps = 0;
 	while (scroller.scrollTop > 0 && steps < CONSTANTS.SWEEP_MAX_STEPS) {
-		scroller.scrollTop = Math.max(0, scroller.scrollTop - scroller.clientHeight);
+		scroller.scrollTop = Math.max(0, scroller.scrollTop - jumpPx);
 		steps++;
 		await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
 		clickVisibleButtons(selector, skipCharts);
@@ -742,7 +907,7 @@ async function sweepCodeBlockButtons(selector) {
 			}
 		} else {
 			idlePasses = 0;
-			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + scroller.clientHeight);
+			scroller.scrollTop = Math.min(scroller.scrollHeight, scroller.scrollTop + jumpPx);
 			steps++;
 			await settle(CONSTANTS.SWEEP_STEP_DELAY_MS);
 			clickVisibleButtons(selector, skipCharts);
@@ -751,6 +916,7 @@ async function sweepCodeBlockButtons(selector) {
 
 	scroller.scrollTop = Math.min(originalY, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
 	scroller.style.scrollBehavior = originalBehavior;
+	scroller.style.visibility = originalVisibility;
 }
 
 /**
@@ -883,7 +1049,14 @@ function createDropdownItem(entry) {
 	item.addEventListener('click', () => {
 		hideDropdown();
 		const offset = Math.round(window.innerHeight * 0.05);
-		jumpToContentY(entry.y, offset, entry.msg);
+		if (typeof entry.y === 'number' && isFinite(entry.y)) {
+			jumpToContentY(entry.y, offset, entry.msg);
+		} else {
+			// Cache-only item: find its position with a hidden sweep, then jump.
+			locateMessageYBySweep(entry.text).then((y) => {
+				jumpToContentY(y, offset, entry.msg);
+			});
+		}
 	});
 
 	return item;

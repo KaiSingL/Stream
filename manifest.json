@@ -18,6 +18,13 @@
 		},
 		{
 			"matches": ["https://grok.com/*"],
+			"js": ["transcript-tap.js"],
+			"run_at": "document_start",
+			"world": "MAIN",
+			"all_frames": false
+		},
+		{
+			"matches": ["https://grok.com/*"],
 			"js": ["settings-relay.js"],
 			"run_at": "document_start",
 			"all_frames": true
