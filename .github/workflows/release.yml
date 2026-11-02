@@ -15,28 +15,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify version matches tag
-        id: version
+      - name: Determine release tag
+        id: tag
         run: |
           VERSION=$(jq -r '.version' manifest.json)
-          TAG="${GITHUB_REF_NAME#v}"
-          if [ "$VERSION" != "$TAG" ]; then
-            echo "::error::manifest.json version ($VERSION) != tag ($TAG)"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::manifest.json version ($VERSION) != tag ($GITHUB_REF_NAME)"
             exit 1
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Manual dispatch from a branch: release using the manifest version.
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build extension zip
-        run: |
-          zip -r "Stream-v${{ steps.version.outputs.version }}.zip" \
-            manifest.json buttons.js chart-renderer.js lib/ icons/ \
-            -x "*.DS_Store" "__MACOSX/*" "._*"
+        run: bash package.sh
 
       - name: Create release and upload asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.tag.outputs.tag }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "Stream-v${{ steps.version.outputs.version }}.zip" \
+          gh release create "$TAG_NAME" \
+            Stream-v*.zip \
             --generate-notes \
-            --title "$GITHUB_REF_NAME"
+            --title "$TAG_NAME"
